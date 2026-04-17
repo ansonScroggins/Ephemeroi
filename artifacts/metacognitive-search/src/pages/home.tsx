@@ -49,22 +49,19 @@ export default function Home() {
                 <div>
                   <div className="flex justify-between text-xs mb-1">
                     <span className="text-muted-foreground font-mono">Model</span>
-                    <span className="font-mono">GPT-4o</span>
+                    <span className="font-mono">gpt-5.2</span>
                   </div>
                 </div>
                 <div>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-muted-foreground font-mono">Memory</span>
-                    <span className="font-mono">8.4 GB / 16 GB</span>
-                  </div>
-                  <div className="h-1 bg-muted rounded overflow-hidden">
-                    <div className="h-full bg-primary w-[52%]" />
+                    <span className="text-muted-foreground font-mono">Transport</span>
+                    <span className="font-mono">SSE / streaming</span>
                   </div>
                 </div>
                 <div>
                   <div className="flex justify-between text-xs mb-1">
-                    <span className="text-muted-foreground font-mono">Latency</span>
-                    <span className="font-mono text-emerald-500">24ms</span>
+                    <span className="text-muted-foreground font-mono">Max retrieval steps</span>
+                    <span className="font-mono text-emerald-500">5</span>
                   </div>
                 </div>
               </div>

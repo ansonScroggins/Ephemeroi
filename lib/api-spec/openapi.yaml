@@ -37,6 +37,12 @@ paths:
         The stream emits events in this order: `started` → repeated `token` (live typing) →
         repeated `step` (DECOMPOSE / RETRIEVE / EVALUATE / PIVOT / SYNTHESIZE) →
         `complete` → `{"done":true}` sentinel.
+
+        **SSE consumption note**: This endpoint uses `text/event-stream` and must be
+        consumed with `fetch` + a `ReadableStream` reader (or `EventSource`). The
+        generated OpenAI-style client stubs are not suitable for this endpoint because they
+        model the response as a single resolved JSON value. Use the `use-search-stream`
+        hook (or equivalent manual `fetch` streaming) to consume this endpoint.
       requestBody:
         required: true
         content:
