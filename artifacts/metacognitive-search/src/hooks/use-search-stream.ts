@@ -1,9 +1,53 @@
 import { useState, useCallback, useRef } from "react";
 
+export interface DecomposePayload {
+  subQuestions: string[];
+  rationale: string;
+  strategy: 'breadth_first' | 'depth_first' | 'comparative';
+}
+
+export interface RetrievePayload {
+  subQuestion: string;
+  sourceType: 'empirical' | 'theoretical' | 'computational' | 'clinical' | 'review';
+  findings: string;
+  confidence: number;
+  references: string[];
+}
+
+export interface EvaluatePayload {
+  coverageAssessment: string;
+  overallConfidence: number;
+  gaps: string[];
+  conflictDetected: boolean;
+  conflictDescription: string | null;
+}
+
+export interface PivotPayload {
+  trigger: string;
+  oldDirection: string;
+  newDirection: string;
+  rationale: string;
+}
+
+export interface SynthesizePayload {
+  answer: string;
+  finalConfidence: number;
+  keyFindings: string[];
+  openQuestions: string[];
+  furtherReading: string[];
+}
+
+export type StepData =
+  | { stepType: 'DECOMPOSE'; data: DecomposePayload }
+  | { stepType: 'RETRIEVE'; data: RetrievePayload }
+  | { stepType: 'EVALUATE'; data: EvaluatePayload }
+  | { stepType: 'PIVOT'; data: PivotPayload }
+  | { stepType: 'SYNTHESIZE'; data: SynthesizePayload };
+
 export type StreamEvent =
   | { type: 'started'; query: string }
   | { type: 'token'; content: string }
-  | { type: 'step'; stepType: 'DECOMPOSE' | 'RETRIEVE' | 'EVALUATE' | 'PIVOT' | 'SYNTHESIZE'; data: any }
+  | ({ type: 'step' } & StepData)
   | { type: 'complete'; totalSteps: number; rawResponse: string };
 
 export function useSearchStream() {
@@ -64,37 +108,42 @@ export function useSearchStream() {
               const eventStr = line.slice(6).trim();
               if (!eventStr) continue;
               
-              const event = JSON.parse(eventStr);
+              const raw: unknown = JSON.parse(eventStr);
+              if (typeof raw !== 'object' || raw === null) continue;
+              const event = raw as Record<string, unknown>;
               
-              if (event.done) {
+              if (event['done'] === true) {
                 setIsRunning(false);
                 setActiveStepType(null);
                 continue;
               }
               
-              if (event.type === 'started') {
-                setEvents([{ type: 'started', query: event.query }]);
-              } else if (event.type === 'token') {
-                setLiveTokenStream(prev => prev + event.content);
-              } else if (event.type === 'step') {
-                setEvents(prev => [...prev, event]);
-                setActiveStepType(event.stepType);
-                // Clear live tokens once a step is captured so only in-progress tokens show
+              if (event['type'] === 'started' && typeof event['query'] === 'string') {
+                setEvents([{ type: 'started', query: event['query'] }]);
+              } else if (event['type'] === 'token' && typeof event['content'] === 'string') {
+                setLiveTokenStream(prev => prev + (event['content'] as string));
+              } else if (event['type'] === 'step') {
+                const stepEvent = event as { type: 'step'; stepType: string; data: unknown };
+                setEvents(prev => [...prev, stepEvent as StreamEvent]);
+                if (typeof stepEvent.stepType === 'string') {
+                  setActiveStepType(stepEvent.stepType);
+                }
                 setLiveTokenStream("");
-              } else if (event.type === 'complete') {
-                setEvents(prev => [...prev, event]);
+              } else if (event['type'] === 'complete') {
+                const completeEvent = event as { type: 'complete'; totalSteps: number; rawResponse: string };
+                setEvents(prev => [...prev, completeEvent]);
                 setIsRunning(false);
                 setActiveStepType(null);
               }
-            } catch (err) {
-              console.error("Failed to parse SSE event", err);
+            } catch (parseErr) {
+              console.error("Failed to parse SSE event", parseErr);
             }
           }
         }
       }
-    } catch (err: any) {
-      if (err.name === 'AbortError') {
-        console.log("Search aborted");
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        // User-initiated cancellation — no error state needed
       } else {
         console.error("Search stream failed:", err);
         setIsRunning(false);

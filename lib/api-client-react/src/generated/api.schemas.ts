@@ -12,9 +12,193 @@ export interface HealthStatus {
 export interface MetacognitiveSearchRequest {
   /** The research question to investigate */
   query: string;
-  /** Maximum number of reasoning iterations */
+  /** Maximum number of retrieval iterations (capped at 5) */
   maxDepth?: number;
 }
+
+export type SseStartedEventType =
+  (typeof SseStartedEventType)[keyof typeof SseStartedEventType];
+
+export const SseStartedEventType = {
+  started: "started",
+} as const;
+
+/**
+ * Emitted once when the stream begins
+ */
+export interface SseStartedEvent {
+  type: SseStartedEventType;
+  query: string;
+}
+
+export type SseTokenEventType =
+  (typeof SseTokenEventType)[keyof typeof SseTokenEventType];
+
+export const SseTokenEventType = {
+  token: "token",
+} as const;
+
+/**
+ * Emitted for each streaming token from the LLM (live typing feed)
+ */
+export interface SseTokenEvent {
+  type: SseTokenEventType;
+  content: string;
+}
+
+export type SseStepEventType =
+  (typeof SseStepEventType)[keyof typeof SseStepEventType];
+
+export const SseStepEventType = {
+  step: "step",
+} as const;
+
+export type SseStepEventStepType =
+  (typeof SseStepEventStepType)[keyof typeof SseStepEventStepType];
+
+export const SseStepEventStepType = {
+  DECOMPOSE: "DECOMPOSE",
+  RETRIEVE: "RETRIEVE",
+  EVALUATE: "EVALUATE",
+  PIVOT: "PIVOT",
+  SYNTHESIZE: "SYNTHESIZE",
+} as const;
+
+export type DecomposeStepDataStrategy =
+  (typeof DecomposeStepDataStrategy)[keyof typeof DecomposeStepDataStrategy];
+
+export const DecomposeStepDataStrategy = {
+  breadth_first: "breadth_first",
+  depth_first: "depth_first",
+  comparative: "comparative",
+} as const;
+
+/**
+ * Query decomposition into focused sub-questions
+ */
+export interface DecomposeStepData {
+  subQuestions: string[];
+  rationale: string;
+  strategy: DecomposeStepDataStrategy;
+}
+
+export type RetrieveStepDataSourceType =
+  (typeof RetrieveStepDataSourceType)[keyof typeof RetrieveStepDataSourceType];
+
+export const RetrieveStepDataSourceType = {
+  empirical: "empirical",
+  theoretical: "theoretical",
+  computational: "computational",
+  clinical: "clinical",
+  review: "review",
+} as const;
+
+/**
+ * Simulated knowledge retrieval for a single sub-question
+ */
+export interface RetrieveStepData {
+  subQuestion: string;
+  sourceType: RetrieveStepDataSourceType;
+  findings: string;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  confidence: number;
+  references: string[];
+}
+
+/**
+ * Coverage evaluation and gap detection across retrieved knowledge
+ */
+export interface EvaluateStepData {
+  coverageAssessment: string;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  overallConfidence: number;
+  gaps: string[];
+  conflictDetected: boolean;
+  conflictDescription?: string | null;
+}
+
+/**
+ * Strategy pivot when gaps or conflicts require a new search direction
+ */
+export interface PivotStepData {
+  trigger: string;
+  oldDirection: string;
+  newDirection: string;
+  rationale: string;
+}
+
+/**
+ * Final synthesis of all retrieved knowledge into a comprehensive answer
+ */
+export interface SynthesizeStepData {
+  answer: string;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  finalConfidence: number;
+  keyFindings: string[];
+  openQuestions: string[];
+  furtherReading: string[];
+}
+
+/**
+ * Emitted when a complete reasoning step is parsed from the stream
+ */
+export interface SseStepEvent {
+  type: SseStepEventType;
+  stepType: SseStepEventStepType;
+  data:
+    | DecomposeStepData
+    | RetrieveStepData
+    | EvaluateStepData
+    | PivotStepData
+    | SynthesizeStepData;
+}
+
+export type SseCompleteEventType =
+  (typeof SseCompleteEventType)[keyof typeof SseCompleteEventType];
+
+export const SseCompleteEventType = {
+  complete: "complete",
+} as const;
+
+/**
+ * Emitted after all steps have been streamed
+ */
+export interface SseCompleteEvent {
+  type: SseCompleteEventType;
+  totalSteps: number;
+  rawResponse: string;
+}
+
+export type SseErrorEventType =
+  (typeof SseErrorEventType)[keyof typeof SseErrorEventType];
+
+export const SseErrorEventType = {
+  error: "error",
+} as const;
+
+/**
+ * Emitted if the LLM or server encounters an error mid-stream
+ */
+export interface SseErrorEvent {
+  type: SseErrorEventType;
+  message: string;
+}
+
+export type MetacognitiveSearchSseEvent =
+  | SseStartedEvent
+  | SseTokenEvent
+  | SseStepEvent
+  | SseCompleteEvent
+  | SseErrorEvent;
 
 export interface SampleQuery {
   id: string;

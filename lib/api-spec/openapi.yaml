@@ -31,7 +31,12 @@ paths:
       operationId: metacognitiveSearch
       tags: [search]
       summary: Run a metacognitive search
-      description: Accepts a research query and streams back structured metacognitive reasoning steps as SSE events
+      description: |
+        Accepts a research query and streams back structured metacognitive reasoning
+        steps as Server-Sent Events (SSE). Each event is a JSON object on a `data:` line.
+        The stream emits events in this order: `started` → repeated `token` (live typing) →
+        repeated `step` (DECOMPOSE / RETRIEVE / EVALUATE / PIVOT / SYNTHESIZE) →
+        `complete` → `{"done":true}` sentinel.
       requestBody:
         required: true
         content:
@@ -40,11 +45,11 @@ paths:
               $ref: "#/components/schemas/MetacognitiveSearchRequest"
       responses:
         "200":
-          description: SSE stream of metacognitive reasoning steps
+          description: SSE stream of metacognitive reasoning events
           content:
             text/event-stream:
               schema:
-                type: string
+                $ref: "#/components/schemas/MetacognitiveSearchSseEvent"
         "400":
           description: Bad request
           content:
@@ -73,6 +78,7 @@ components:
           type: string
       required:
         - status
+
     MetacognitiveSearchRequest:
       type: object
       properties:
@@ -81,10 +87,184 @@ components:
           description: The research question to investigate
         maxDepth:
           type: integer
-          description: Maximum number of reasoning iterations
+          description: Maximum number of retrieval iterations (capped at 5)
           default: 5
       required:
         - query
+
+    # --- SSE event union ---
+    MetacognitiveSearchSseEvent:
+      oneOf:
+        - $ref: "#/components/schemas/SseStartedEvent"
+        - $ref: "#/components/schemas/SseTokenEvent"
+        - $ref: "#/components/schemas/SseStepEvent"
+        - $ref: "#/components/schemas/SseCompleteEvent"
+        - $ref: "#/components/schemas/SseErrorEvent"
+      discriminator:
+        propertyName: type
+
+    SseStartedEvent:
+      type: object
+      description: Emitted once when the stream begins
+      properties:
+        type:
+          type: string
+          enum: [started]
+        query:
+          type: string
+      required: [type, query]
+
+    SseTokenEvent:
+      type: object
+      description: Emitted for each streaming token from the LLM (live typing feed)
+      properties:
+        type:
+          type: string
+          enum: [token]
+        content:
+          type: string
+      required: [type, content]
+
+    SseStepEvent:
+      type: object
+      description: Emitted when a complete reasoning step is parsed from the stream
+      properties:
+        type:
+          type: string
+          enum: [step]
+        stepType:
+          type: string
+          enum: [DECOMPOSE, RETRIEVE, EVALUATE, PIVOT, SYNTHESIZE]
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/DecomposeStepData"
+            - $ref: "#/components/schemas/RetrieveStepData"
+            - $ref: "#/components/schemas/EvaluateStepData"
+            - $ref: "#/components/schemas/PivotStepData"
+            - $ref: "#/components/schemas/SynthesizeStepData"
+      required: [type, stepType, data]
+
+    SseCompleteEvent:
+      type: object
+      description: Emitted after all steps have been streamed
+      properties:
+        type:
+          type: string
+          enum: [complete]
+        totalSteps:
+          type: integer
+        rawResponse:
+          type: string
+      required: [type, totalSteps, rawResponse]
+
+    SseErrorEvent:
+      type: object
+      description: Emitted if the LLM or server encounters an error mid-stream
+      properties:
+        type:
+          type: string
+          enum: [error]
+        message:
+          type: string
+      required: [type, message]
+
+    # --- Step data payloads ---
+    DecomposeStepData:
+      type: object
+      description: Query decomposition into focused sub-questions
+      properties:
+        subQuestions:
+          type: array
+          items:
+            type: string
+        rationale:
+          type: string
+        strategy:
+          type: string
+          enum: [breadth_first, depth_first, comparative]
+      required: [subQuestions, rationale, strategy]
+
+    RetrieveStepData:
+      type: object
+      description: Simulated knowledge retrieval for a single sub-question
+      properties:
+        subQuestion:
+          type: string
+        sourceType:
+          type: string
+          enum: [empirical, theoretical, computational, clinical, review]
+        findings:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        references:
+          type: array
+          items:
+            type: string
+      required: [subQuestion, sourceType, findings, confidence, references]
+
+    EvaluateStepData:
+      type: object
+      description: Coverage evaluation and gap detection across retrieved knowledge
+      properties:
+        coverageAssessment:
+          type: string
+        overallConfidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        gaps:
+          type: array
+          items:
+            type: string
+        conflictDetected:
+          type: boolean
+        conflictDescription:
+          type: string
+          nullable: true
+      required: [coverageAssessment, overallConfidence, gaps, conflictDetected]
+
+    PivotStepData:
+      type: object
+      description: Strategy pivot when gaps or conflicts require a new search direction
+      properties:
+        trigger:
+          type: string
+        oldDirection:
+          type: string
+        newDirection:
+          type: string
+        rationale:
+          type: string
+      required: [trigger, oldDirection, newDirection, rationale]
+
+    SynthesizeStepData:
+      type: object
+      description: Final synthesis of all retrieved knowledge into a comprehensive answer
+      properties:
+        answer:
+          type: string
+        finalConfidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        keyFindings:
+          type: array
+          items:
+            type: string
+        openQuestions:
+          type: array
+          items:
+            type: string
+        furtherReading:
+          type: array
+          items:
+            type: string
+      required: [answer, finalConfidence, keyFindings, openQuestions, furtherReading]
+
+    # --- Sample queries ---
     SampleQueriesResponse:
       type: object
       properties:
@@ -94,6 +274,7 @@ components:
             $ref: "#/components/schemas/SampleQuery"
       required:
         - queries
+
     SampleQuery:
       type: object
       properties:
@@ -110,6 +291,7 @@ components:
         - label
         - query
         - domain
+
     ErrorResponse:
       type: object
       properties:

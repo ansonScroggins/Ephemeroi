@@ -142,30 +142,27 @@ Please conduct a metacognitive search on this question. Use ${Math.min(maxDepth,
         // Stream raw tokens so the frontend can show live typing
         sendEvent({ type: "token", content });
 
-        // Check for newly completed steps in the accumulated text
-        const newText = fullResponse.slice(lastProcessedLength);
-        const completedStepEnd = fullResponse.lastIndexOf("\n[STEP:");
-        const searchFrom = Math.max(lastProcessedLength, completedStepEnd);
-
-        // Look for complete lines that start with [STEP:...]
-        const lines = fullResponse.slice(lastProcessedLength).split("\n");
-        for (let i = 0; i < lines.length - 1; i++) {
-          const line = lines[i];
-          const match = line.match(/^\[STEP:([A-Z]+)\]\s*(\{.*\})\s*$/);
-          if (match) {
-            const stepType = match[1];
-            try {
-              const data = JSON.parse(match[2]) as Record<string, unknown>;
-              sendEvent({ type: "step", stepType, data });
-            } catch {
-              // Skip malformed JSON
+        // Emit any complete [STEP:TYPE] lines from the newly buffered text.
+        // We scan only up to the last newline so partial lines stay buffered.
+        const pending = fullResponse.slice(lastProcessedLength);
+        const lastNewline = pending.lastIndexOf("\n");
+        if (lastNewline !== -1) {
+          const completeChunk = pending.slice(0, lastNewline);
+          const chunkLines = completeChunk.split("\n");
+          for (const line of chunkLines) {
+            const match = line.match(/^\[STEP:([A-Z]+)\]\s*(\{.*\})\s*$/);
+            if (match) {
+              const stepType = match[1];
+              try {
+                const data = JSON.parse(match[2]) as Record<string, unknown>;
+                sendEvent({ type: "step", stepType, data });
+              } catch {
+                // Skip malformed JSON — model produced unparseable step
+              }
             }
           }
+          lastProcessedLength += lastNewline + 1;
         }
-
-        lastProcessedLength = fullResponse.length - (lines[lines.length - 1]?.length ?? 0);
-        void newText;
-        void searchFrom;
       }
     }
 

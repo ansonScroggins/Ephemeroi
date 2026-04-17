@@ -20,6 +20,7 @@ import type {
   ErrorResponse,
   HealthStatus,
   MetacognitiveSearchRequest,
+  MetacognitiveSearchSseEvent,
   SampleQueriesResponse,
 } from "./api.schemas";
 
@@ -109,7 +110,12 @@ export function useHealthCheck<
 }
 
 /**
- * Accepts a research query and streams back structured metacognitive reasoning steps as SSE events
+ * Accepts a research query and streams back structured metacognitive reasoning
+steps as Server-Sent Events (SSE). Each event is a JSON object on a `data:` line.
+The stream emits events in this order: `started` → repeated `token` (live typing) →
+repeated `step` (DECOMPOSE / RETRIEVE / EVALUATE / PIVOT / SYNTHESIZE) →
+`complete` → `{"done":true}` sentinel.
+
  * @summary Run a metacognitive search
  */
 export const getMetacognitiveSearchUrl = () => {
@@ -119,8 +125,8 @@ export const getMetacognitiveSearchUrl = () => {
 export const metacognitiveSearch = async (
   metacognitiveSearchRequest: MetacognitiveSearchRequest,
   options?: RequestInit,
-): Promise<string> => {
-  return customFetch<string>(getMetacognitiveSearchUrl(), {
+): Promise<MetacognitiveSearchSseEvent> => {
+  return customFetch<MetacognitiveSearchSseEvent>(getMetacognitiveSearchUrl(), {
     ...options,
     method: "POST",
     headers: { "Content-Type": "application/json", ...options?.headers },

@@ -16,7 +16,12 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * Accepts a research query and streams back structured metacognitive reasoning steps as SSE events
+ * Accepts a research query and streams back structured metacognitive reasoning
+steps as Server-Sent Events (SSE). Each event is a JSON object on a `data:` line.
+The stream emits events in this order: `started` → repeated `token` (live typing) →
+repeated `step` (DECOMPOSE / RETRIEVE / EVALUATE / PIVOT / SYNTHESIZE) →
+`complete` → `{"done":true}` sentinel.
+
  * @summary Run a metacognitive search
  */
 export const metacognitiveSearchBodyMaxDepthDefault = 5;
@@ -26,7 +31,7 @@ export const MetacognitiveSearchBody = zod.object({
   maxDepth: zod
     .number()
     .default(metacognitiveSearchBodyMaxDepthDefault)
-    .describe("Maximum number of reasoning iterations"),
+    .describe("Maximum number of retrieval iterations (capped at 5)"),
 });
 
 /**

@@ -9,6 +9,6 @@
 export interface MetacognitiveSearchRequest {
   /** The research question to investigate */
   query: string;
-  /** Maximum number of reasoning iterations */
+  /** Maximum number of retrieval iterations (capped at 5) */
   maxDepth?: number;
 }

@@ -6,8 +6,27 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./decomposeStepData";
+export * from "./decomposeStepDataStrategy";
 export * from "./errorResponse";
+export * from "./evaluateStepData";
 export * from "./healthStatus";
 export * from "./metacognitiveSearchRequest";
+export * from "./metacognitiveSearchSseEvent";
+export * from "./pivotStepData";
+export * from "./retrieveStepData";
+export * from "./retrieveStepDataSourceType";
 export * from "./sampleQueriesResponse";
 export * from "./sampleQuery";
+export * from "./sseCompleteEvent";
+export * from "./sseCompleteEventType";
+export * from "./sseErrorEvent";
+export * from "./sseErrorEventType";
+export * from "./sseStartedEvent";
+export * from "./sseStartedEventType";
+export * from "./sseStepEvent";
+export * from "./sseStepEventStepType";
+export * from "./sseStepEventType";
+export * from "./sseTokenEvent";
+export * from "./sseTokenEventType";
+export * from "./synthesizeStepData";
