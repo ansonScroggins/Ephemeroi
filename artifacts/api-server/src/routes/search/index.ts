@@ -1,7 +1,6 @@
 import { Router, type IRouter } from "express";
 import { openai } from "@workspace/integrations-openai-ai-server";
 import { MetacognitiveSearchBody, GetSampleQueriesResponse } from "@workspace/api-zod";
-import { logger } from "../../lib/logger";
 
 const router: IRouter = Router();
 

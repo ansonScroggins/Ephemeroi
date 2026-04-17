@@ -82,6 +82,11 @@ export function useSearchStream() {
         signal: abortController.signal
       });
 
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unknown error");
+        throw new Error(`Search request failed (${response.status}): ${errorText}`);
+      }
+
       if (!response.body) {
         throw new Error("No response body");
       }
