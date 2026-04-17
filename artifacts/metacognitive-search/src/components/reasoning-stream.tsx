@@ -102,13 +102,15 @@ function renderEvent(event: StreamEvent, index: number) {
 
   if (event.type === 'error') {
     return (
-      <div className="flex items-center gap-3 py-4" data-testid="stream-event-error">
-        <div className="h-px bg-border flex-1" />
-        <AlertTriangle className="h-5 w-5 text-rose-500" />
-        <span className="text-xs font-mono uppercase tracking-widest text-rose-500">Search Error</span>
-        <div className="h-px bg-border flex-1" />
-        <span className="sr-only">{event.message}</span>
-      </div>
+      <Card className="border-l-4 border-l-rose-500 bg-rose-500/5" data-testid="stream-event-error">
+        <CardContent className="p-4 flex items-start gap-3">
+          <AlertTriangle className="h-4 w-4 text-rose-500 shrink-0 mt-0.5" />
+          <div>
+            <p className="text-xs font-mono uppercase tracking-wider text-rose-400 mb-1">Search Error</p>
+            <p className="text-sm text-rose-300/80">{event.message}</p>
+          </div>
+        </CardContent>
+      </Card>
     );
   }
 

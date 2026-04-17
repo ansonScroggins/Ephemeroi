@@ -84,7 +84,10 @@ export function useSearchStream() {
 
       if (!response.ok) {
         const errorText = await response.text().catch(() => "Unknown error");
-        throw new Error(`Search request failed (${response.status}): ${errorText}`);
+        const message = `Request failed (${response.status}): ${errorText}`;
+        setEvents(prev => [...prev, { type: 'error', message }]);
+        setIsRunning(false);
+        return;
       }
 
       if (!response.body) {
@@ -155,7 +158,8 @@ export function useSearchStream() {
       if (err instanceof Error && err.name === 'AbortError') {
         // User-initiated cancellation — no error state needed
       } else {
-        console.error("Search stream failed:", err);
+        const message = err instanceof Error ? err.message : "An unexpected error occurred";
+        setEvents(prev => [...prev, { type: 'error', message }]);
         setIsRunning(false);
         setActiveStepType(null);
       }

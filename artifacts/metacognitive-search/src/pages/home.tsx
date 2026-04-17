@@ -49,7 +49,7 @@ export default function Home() {
                 <div>
                   <div className="flex justify-between text-xs mb-1">
                     <span className="text-muted-foreground font-mono">Model</span>
-                    <span className="font-mono">gpt-5.2</span>
+                    <span className="font-mono" title="Set OPENAI_MODEL env var to override">gpt-5.2 (default)</span>
                   </div>
                 </div>
                 <div>
