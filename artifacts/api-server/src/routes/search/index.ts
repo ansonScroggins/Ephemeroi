@@ -120,8 +120,9 @@ router.post("/search/metacognitive", async (req, res): Promise<void> => {
 
 Please conduct a metacognitive search on this question. Use ${Math.min(maxDepth, 5)} retrieval steps maximum. Output each step using the exact format specified.`;
 
+    const model = process.env["OPENAI_MODEL"] ?? "gpt-5.2";
     const stream = await openai.chat.completions.create({
-      model: "gpt-5.2",
+      model,
       max_completion_tokens: 8192,
       messages: [
         { role: "system", content: METACOGNITIVE_SYSTEM_PROMPT },
