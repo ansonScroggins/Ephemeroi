@@ -9,6 +9,7 @@ import {
   SynthesizePayload,
   WebSearchPayload,
   PatternPayload,
+  ReflectPayload,
 } from "@/hooks/use-search-stream";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +17,7 @@ import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import {
   AlertTriangle, BookOpen, Brain, CheckCircle, ChevronRight,
-  ExternalLink, Globe, Layers, Microscope, Search, Zap,
+  ExternalLink, Globe, Layers, Lightbulb, Microscope, Search, Sparkles, Zap,
 } from "lucide-react";
 
 interface ReasoningStreamProps {
@@ -134,6 +135,7 @@ function renderEvent(event: StreamEvent) {
       case 'SYNTHESIZE': return renderSynthesize(event.data as SynthesizePayload);
       case 'WEB_SEARCH': return renderWebSearch(event.data as WebSearchPayload);
       case 'PATTERN': return renderPattern(event.data as PatternPayload);
+      case 'REFLECT': return renderReflect(event.data as ReflectPayload);
       default: return null;
     }
   }
@@ -486,6 +488,75 @@ function renderPattern(d: PatternPayload) {
                 </li>
               ))}
             </ul>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
+function renderReflect(d: ReflectPayload) {
+  return (
+    <Card
+      className="border-l-4 border-l-amber-400 bg-gradient-to-br from-amber-500/5 via-card to-card overflow-hidden"
+      data-testid="stream-step-reflect"
+    >
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Sparkles className="h-4 w-4 text-amber-400" />
+          <CardTitle className="text-xs font-mono uppercase tracking-widest text-amber-300/90">
+            REFLECT · Personal Thoughts &amp; Autonomous Exploration
+          </CardTitle>
+        </div>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        <div className="border-l-2 border-amber-400/40 pl-3 italic text-foreground/90 text-sm leading-relaxed">
+          {d.personalSummary}
+        </div>
+
+        {d.interestingObservations?.length > 0 && (
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2 font-mono flex items-center gap-1.5">
+              <Lightbulb className="h-3 w-3 text-amber-400" /> What Struck Me
+            </p>
+            <ul className="space-y-1.5 text-sm text-foreground/85">
+              {d.interestingObservations.map((o, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <span className="text-amber-400/70 shrink-0 mt-0.5">◆</span>
+                  <span>{o}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {d.autonomousExplorations?.length > 0 && (
+          <div>
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-2 font-mono flex items-center gap-1.5">
+              <Sparkles className="h-3 w-3 text-amber-400" /> If Given Autonomy, I'd Explore
+            </p>
+            <ul className="space-y-1.5">
+              {d.autonomousExplorations.map((e, i) => (
+                <li
+                  key={i}
+                  className="flex items-start gap-2 text-sm text-foreground/85 border border-amber-500/20 bg-amber-500/5 rounded p-2"
+                >
+                  <span className="text-amber-400 font-mono text-xs shrink-0 mt-0.5">→</span>
+                  <span>{e}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {d.selfAssessment && (
+          <div className="pt-2 border-t border-border/40">
+            <p className="text-[10px] uppercase tracking-widest text-muted-foreground mb-1.5 font-mono">
+              Self-Assessment
+            </p>
+            <p className="text-xs text-muted-foreground/90 leading-relaxed italic">
+              {d.selfAssessment}
+            </p>
           </div>
         )}
       </CardContent>

@@ -9,6 +9,7 @@ import type { DecomposeStepData } from "./decomposeStepData";
 import type { EvaluateStepData } from "./evaluateStepData";
 import type { PatternStepData } from "./patternStepData";
 import type { PivotStepData } from "./pivotStepData";
+import type { ReflectStepData } from "./reflectStepData";
 import type { RetrieveStepData } from "./retrieveStepData";
 import type { SseStepEventStepType } from "./sseStepEventStepType";
 import type { SseStepEventType } from "./sseStepEventType";
@@ -28,5 +29,6 @@ export interface SseStepEvent {
     | PivotStepData
     | SynthesizeStepData
     | WebSearchStepData
-    | PatternStepData;
+    | PatternStepData
+    | ReflectStepData;
 }

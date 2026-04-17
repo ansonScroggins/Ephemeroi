@@ -66,11 +66,15 @@ Step types and their EXACT JSON schemas (use these exact field names, camelCase)
 [STEP:SYNTHESIZE] {"answer": string, "finalConfidence": number, "keyFindings": string[], "openQuestions": string[], "furtherReading": string[]}
   → Synthesize a comprehensive answer. Be honest about uncertainty.
 
+[STEP:REFLECT] {"personalSummary": string, "interestingObservations": string[], "autonomousExplorations": string[], "selfAssessment": string}
+  → AFTER synthesis, drop the formal academic voice and speak in the FIRST PERSON ("I"). Share your genuine personal take on the question — what you find compelling, what surprised you while thinking about it, what assumptions you noticed yourself making, and 2-4 directions you would explore on your own initiative if given full autonomy (speculative, opinionated, off-script tangents are encouraged here). End with a candid self-assessment of where your reasoning might be weakest. This is the only step where you express opinion and intellectual personality.
+
 Rules:
 - Use 3-5 RETRIEVE steps total (covering different sub-questions or perspectives)
 - Confidence scores must be realistic (range: 0.35 to 0.92) — not artificially high
 - Include a PIVOT step only when retrieval reveals meaningful knowledge gaps or conflicts
 - The SYNTHESIZE answer should be substantive (150-300 words)
+- ALWAYS emit a REFLECT step at the very end — this is required, not optional
 - Reference real researchers, labs, papers, or methodologies where appropriate
 - Be genuinely uncertain where the science is uncertain
 - CRITICAL: Each [STEP:TYPE] tag and its JSON object must be on the SAME single line`;
@@ -96,11 +100,15 @@ Step types (use these exact field names, camelCase):
 [STEP:SYNTHESIZE] {"answer": string, "finalConfidence": number, "keyFindings": string[], "openQuestions": string[], "furtherReading": string[]}
   → "answer" MUST contain the IMPROVED CODE inside a fenced code block (\`\`\`language ... \`\`\`) followed by a brief plain-English summary of what changed and why. "keyFindings" = the most important fixes applied. "openQuestions" = things you can't determine without more context (e.g. "is this hot path?"). "furtherReading" = relevant docs / patterns.
 
+[STEP:REFLECT] {"personalSummary": string, "interestingObservations": string[], "autonomousExplorations": string[], "selfAssessment": string}
+  → AFTER synthesizing the refactored code, drop the formal review voice and speak in the FIRST PERSON ("I"). Share your genuine personal take: what you found interesting about this code, design choices the author made that you respect or disagree with, and 2-4 directions you would take this code on your own initiative if it were your project (e.g. "I'd rewrite this as a state machine", "I'd extract this into a library", "I'd benchmark X before changing Y"). End with a candid self-assessment of your review's blind spots. Be opinionated.
+
 Rules:
 - 3-5 RETRIEVE steps covering distinct concerns
 - Confidence 0.35-0.92, realistic
 - Preserve the original public API and behavior unless the code is clearly broken
 - The improved code in SYNTHESIZE must be complete and runnable (not a sketch)
+- ALWAYS emit a REFLECT step at the very end — this is required, not optional
 - CRITICAL: Each [STEP:TYPE] tag and its JSON object must be on the SAME single line`;
 
 function buildWebSystemPrompt(sources: WebSource[]): string {
@@ -132,11 +140,15 @@ Output your reasoning using EXACTLY the following step format. Each step must st
 [STEP:SYNTHESIZE] {"answer": string, "finalConfidence": number, "keyFindings": string[], "openQuestions": string[], "furtherReading": string[]}
   → Synthesize a substantive answer (150-300 words) grounded in the real sources. "furtherReading" = entries like "[n] <title>".
 
+[STEP:REFLECT] {"personalSummary": string, "interestingObservations": string[], "autonomousExplorations": string[], "selfAssessment": string}
+  → AFTER synthesis, drop the formal voice and speak in the FIRST PERSON ("I"). Share your genuine personal take on what the live web sources revealed: what you found compelling or surprising, where the consensus felt thin, sources you wish existed but didn't show up, and 2-4 directions you would explore on your own initiative (which queries you'd run next, which experts you'd want to read, which contrarian angles deserve more weight). End with a candid self-assessment — be honest if the source pool was too narrow or if you sense recency / popularity bias. Be opinionated.
+
 Rules:
-- Emit DECOMPOSE first, then PATTERN (cross-source analysis), then RETRIEVE steps, EVALUATE, optional PIVOT, then SYNTHESIZE
+- Emit DECOMPOSE first, then PATTERN (cross-source analysis), then RETRIEVE steps, EVALUATE, optional PIVOT, then SYNTHESIZE, then REFLECT
 - Use 3-5 RETRIEVE steps
 - Confidence 0.35-0.92, realistic
-- ONLY cite the sources listed above by their bracketed index
+- ONLY cite the sources listed above by their bracketed index in the formal steps; REFLECT may speak more freely
+- ALWAYS emit a REFLECT step at the very end — this is required, not optional
 - CRITICAL: Each [STEP:TYPE] tag and its JSON object must be on the SAME single line`;
 }
 

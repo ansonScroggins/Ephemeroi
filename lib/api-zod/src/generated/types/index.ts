@@ -17,6 +17,7 @@ export * from "./metacognitiveSearchRequestMode";
 export * from "./metacognitiveSearchSseEvent";
 export * from "./patternStepData";
 export * from "./pivotStepData";
+export * from "./reflectStepData";
 export * from "./retrieveStepData";
 export * from "./retrieveStepDataSourceType";
 export * from "./sampleQueriesResponse";

@@ -158,7 +158,7 @@ components:
           enum: [step]
         stepType:
           type: string
-          enum: [DECOMPOSE, RETRIEVE, EVALUATE, PIVOT, SYNTHESIZE, WEB_SEARCH, PATTERN]
+          enum: [DECOMPOSE, RETRIEVE, EVALUATE, PIVOT, SYNTHESIZE, WEB_SEARCH, PATTERN, REFLECT]
         data:
           oneOf:
             - $ref: "#/components/schemas/DecomposeStepData"
@@ -168,6 +168,7 @@ components:
             - $ref: "#/components/schemas/SynthesizeStepData"
             - $ref: "#/components/schemas/WebSearchStepData"
             - $ref: "#/components/schemas/PatternStepData"
+            - $ref: "#/components/schemas/ReflectStepData"
       required: [type, stepType, data]
 
     SseCompleteEvent:
@@ -350,6 +351,28 @@ components:
           items:
             type: integer
       required: [theme, frequency, supportingSources]
+
+    ReflectStepData:
+      type: object
+      description: Autonomous self-reflection — the model's first-person summary of personal observations and directions it would explore on its own initiative.
+      properties:
+        personalSummary:
+          type: string
+          description: 2-4 sentence first-person summary of what the model personally finds compelling or notable about the question and its own answer.
+        interestingObservations:
+          type: array
+          description: Things that stood out to the model that did not fit cleanly into the formal reasoning steps.
+          items:
+            type: string
+        autonomousExplorations:
+          type: array
+          description: Directions the model would explore further if given autonomy — speculative, opinionated, or off-script tangents.
+          items:
+            type: string
+        selfAssessment:
+          type: string
+          description: Honest critique of the model's own reasoning — limitations, uncertainties, where it might be wrong.
+      required: [personalSummary, interestingObservations, autonomousExplorations, selfAssessment]
 
     # --- Sample queries ---
     SampleQueriesResponse:

@@ -1,7 +1,7 @@
 import React from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
-import { AlertTriangle, Brain, Globe, Layers, Microscope, Search, Target, Zap } from "lucide-react";
+import { AlertTriangle, Brain, Globe, Layers, Microscope, Search, Sparkles, Target, Zap } from "lucide-react";
 
 interface ArchitectureLegendProps {
   activeStepType: string | null;
@@ -77,6 +77,16 @@ const COMPONENTS = [
     bgClass: "bg-violet-500/10",
     borderClass: "border-violet-500/50",
     pulseClass: "shadow-[0_0_15px_rgba(139,92,246,0.5)]",
+  },
+  {
+    id: "REFLECT",
+    name: "Self-Reflector",
+    description: "First-person summary, opinions, and autonomous explorations",
+    icon: Sparkles,
+    colorClass: "text-amber-300",
+    bgClass: "bg-amber-400/10",
+    borderClass: "border-amber-400/50",
+    pulseClass: "shadow-[0_0_15px_rgba(251,191,36,0.5)]",
   },
 ];
 

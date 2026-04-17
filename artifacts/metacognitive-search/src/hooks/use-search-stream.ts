@@ -65,6 +65,13 @@ export interface PatternPayload {
   outliers: string[];
 }
 
+export interface ReflectPayload {
+  personalSummary: string;
+  interestingObservations: string[];
+  autonomousExplorations: string[];
+  selfAssessment: string;
+}
+
 export type StepData =
   | { stepType: 'DECOMPOSE'; data: DecomposePayload }
   | { stepType: 'RETRIEVE'; data: RetrievePayload }
@@ -72,7 +79,8 @@ export type StepData =
   | { stepType: 'PIVOT'; data: PivotPayload }
   | { stepType: 'SYNTHESIZE'; data: SynthesizePayload }
   | { stepType: 'WEB_SEARCH'; data: WebSearchPayload }
-  | { stepType: 'PATTERN'; data: PatternPayload };
+  | { stepType: 'PATTERN'; data: PatternPayload }
+  | { stepType: 'REFLECT'; data: ReflectPayload };
 
 export type StreamEvent =
   | { type: 'started'; query: string }

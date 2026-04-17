@@ -88,6 +88,7 @@ export const SseStepEventStepType = {
   SYNTHESIZE: "SYNTHESIZE",
   WEB_SEARCH: "WEB_SEARCH",
   PATTERN: "PATTERN",
+  REFLECT: "REFLECT",
 } as const;
 
 export type DecomposeStepDataStrategy =
@@ -209,6 +210,20 @@ export interface PatternStepData {
 }
 
 /**
+ * Autonomous self-reflection — the model's first-person summary of personal observations and directions it would explore on its own initiative.
+ */
+export interface ReflectStepData {
+  /** 2-4 sentence first-person summary of what the model personally finds compelling or notable about the question and its own answer. */
+  personalSummary: string;
+  /** Things that stood out to the model that did not fit cleanly into the formal reasoning steps. */
+  interestingObservations: string[];
+  /** Directions the model would explore further if given autonomy — speculative, opinionated, or off-script tangents. */
+  autonomousExplorations: string[];
+  /** Honest critique of the model's own reasoning — limitations, uncertainties, where it might be wrong. */
+  selfAssessment: string;
+}
+
+/**
  * Emitted when a complete reasoning step is parsed from the stream
  */
 export interface SseStepEvent {
@@ -221,7 +236,8 @@ export interface SseStepEvent {
     | PivotStepData
     | SynthesizeStepData
     | WebSearchStepData
-    | PatternStepData;
+    | PatternStepData
+    | ReflectStepData;
 }
 
 export type SseCompleteEventType =

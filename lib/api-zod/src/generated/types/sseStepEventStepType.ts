@@ -17,4 +17,5 @@ export const SseStepEventStepType = {
   SYNTHESIZE: "SYNTHESIZE",
   WEB_SEARCH: "WEB_SEARCH",
   PATTERN: "PATTERN",
+  REFLECT: "REFLECT",
 } as const;

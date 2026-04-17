@@ -34,7 +34,7 @@ Research-grade web UI that streams structured metacognitive reasoning over SSE. 
 - **Code Review** — paste code, get a metacognitive code review with refactored code in the synthesis step
 - **Web Search** — uses OpenAI Responses API `web_search` tool to fetch real live sources, then runs the metacognitive flow grounded in those sources, with a `PATTERN` step that detects recurring themes across the results
 
-Step types: `DECOMPOSE`, `RETRIEVE`, `EVALUATE`, `PIVOT`, `SYNTHESIZE`, plus `WEB_SEARCH` and `PATTERN` (web mode only).
+Step types: `DECOMPOSE`, `RETRIEVE`, `EVALUATE`, `PIVOT`, `SYNTHESIZE`, plus `WEB_SEARCH` and `PATTERN` (web mode only). Every run ends with a `REFLECT` step where the model drops the formal voice, speaks in the first person, shares personal observations, and proposes 2-4 directions it would explore on its own initiative.
 
 Backend: `artifacts/api-server/src/routes/search/index.ts` (`POST /api/search/metacognitive`, SSE).
 Model is read from `OPENAI_MODEL` env var (default `gpt-5.2`). Express body limit raised to 5mb in `app.ts` to accommodate pasted code.
