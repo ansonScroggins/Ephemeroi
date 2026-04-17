@@ -8,11 +8,14 @@
 
 export * from "./decomposeStepData";
 export * from "./decomposeStepDataStrategy";
+export * from "./detectedPattern";
 export * from "./errorResponse";
 export * from "./evaluateStepData";
 export * from "./healthStatus";
 export * from "./metacognitiveSearchRequest";
+export * from "./metacognitiveSearchRequestMode";
 export * from "./metacognitiveSearchSseEvent";
+export * from "./patternStepData";
 export * from "./pivotStepData";
 export * from "./retrieveStepData";
 export * from "./retrieveStepDataSourceType";
@@ -30,3 +33,5 @@ export * from "./sseStepEventType";
 export * from "./sseTokenEvent";
 export * from "./sseTokenEventType";
 export * from "./synthesizeStepData";
+export * from "./webSearchStepData";
+export * from "./webSource";

@@ -1,5 +1,7 @@
 import { useState, useCallback, useRef } from "react";
 
+export type SearchMode = "research" | "code" | "web";
+
 export interface DecomposePayload {
   subQuestions: string[];
   rationale: string;
@@ -37,12 +39,40 @@ export interface SynthesizePayload {
   furtherReading: string[];
 }
 
+export interface WebSource {
+  index: number;
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface WebSearchPayload {
+  query: string;
+  sources: WebSource[];
+  totalSources: number;
+  status?: 'searching';
+}
+
+export interface DetectedPattern {
+  theme: string;
+  frequency: number;
+  supportingSources: number[];
+}
+
+export interface PatternPayload {
+  patterns: DetectedPattern[];
+  dominantThemes: string[];
+  outliers: string[];
+}
+
 export type StepData =
   | { stepType: 'DECOMPOSE'; data: DecomposePayload }
   | { stepType: 'RETRIEVE'; data: RetrievePayload }
   | { stepType: 'EVALUATE'; data: EvaluatePayload }
   | { stepType: 'PIVOT'; data: PivotPayload }
-  | { stepType: 'SYNTHESIZE'; data: SynthesizePayload };
+  | { stepType: 'SYNTHESIZE'; data: SynthesizePayload }
+  | { stepType: 'WEB_SEARCH'; data: WebSearchPayload }
+  | { stepType: 'PATTERN'; data: PatternPayload };
 
 export type StreamEvent =
   | { type: 'started'; query: string }
@@ -51,34 +81,43 @@ export type StreamEvent =
   | { type: 'complete'; totalSteps: number; rawResponse: string }
   | { type: 'error'; message: string };
 
+export interface StartSearchOptions {
+  query: string;
+  mode?: SearchMode;
+  code?: string;
+}
+
 export function useSearchStream() {
   const [isRunning, setIsRunning] = useState(false);
   const [query, setQuery] = useState("");
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [liveTokenStream, setLiveTokenStream] = useState("");
   const [activeStepType, setActiveStepType] = useState<string | null>(null);
-  
+
   const activeAbortController = useRef<AbortController | null>(null);
 
-  const startSearch = useCallback(async (searchQuery: string) => {
+  const startSearch = useCallback(async (opts: StartSearchOptions) => {
     if (activeAbortController.current) {
       activeAbortController.current.abort();
     }
-    
-    setQuery(searchQuery);
+
+    setQuery(opts.query);
     setEvents([]);
     setLiveTokenStream("");
     setIsRunning(true);
     setActiveStepType(null);
-    
+
     const abortController = new AbortController();
     activeAbortController.current = abortController;
 
     try {
+      const body: Record<string, unknown> = { query: opts.query, mode: opts.mode ?? "research" };
+      if (opts.mode === "code" && opts.code) body['code'] = opts.code;
+
       const response = await fetch('/api/search/metacognitive', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: searchQuery }),
+        body: JSON.stringify(body),
         signal: abortController.signal
       });
 
@@ -100,40 +139,47 @@ export function useSearchStream() {
 
       while (true) {
         const { done, value } = await reader.read();
-        
+
         if (done) {
           setIsRunning(false);
           setActiveStepType(null);
           break;
         }
-        
+
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
         buffer = lines.pop() ?? '';
-        
+
         for (const line of lines) {
           if (line.startsWith('data: ')) {
             try {
               const eventStr = line.slice(6).trim();
               if (!eventStr) continue;
-              
+
               const raw: unknown = JSON.parse(eventStr);
               if (typeof raw !== 'object' || raw === null) continue;
               const event = raw as Record<string, unknown>;
-              
+
               if (event['done'] === true) {
                 setIsRunning(false);
                 setActiveStepType(null);
                 continue;
               }
-              
+
               if (event['type'] === 'started' && typeof event['query'] === 'string') {
                 setEvents([{ type: 'started', query: event['query'] }]);
               } else if (event['type'] === 'token' && typeof event['content'] === 'string') {
                 setLiveTokenStream(prev => prev + (event['content'] as string));
               } else if (event['type'] === 'step') {
                 const stepEvent = event as { type: 'step'; stepType: string; data: unknown };
-                setEvents(prev => [...prev, stepEvent as StreamEvent]);
+                // Skip the placeholder "searching" WEB_SEARCH event from being added to history
+                // (it's just to flip the active indicator). The real one with sources replaces it.
+                const isSearchingPlaceholder =
+                  stepEvent.stepType === 'WEB_SEARCH' &&
+                  (stepEvent.data as { status?: string })?.status === 'searching';
+                if (!isSearchingPlaceholder) {
+                  setEvents(prev => [...prev, stepEvent as StreamEvent]);
+                }
                 if (typeof stepEvent.stepType === 'string') {
                   setActiveStepType(stepEvent.stepType);
                 }

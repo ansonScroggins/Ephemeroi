@@ -7,11 +7,13 @@
  */
 import type { DecomposeStepData } from "./decomposeStepData";
 import type { EvaluateStepData } from "./evaluateStepData";
+import type { PatternStepData } from "./patternStepData";
 import type { PivotStepData } from "./pivotStepData";
 import type { RetrieveStepData } from "./retrieveStepData";
 import type { SseStepEventStepType } from "./sseStepEventStepType";
 import type { SseStepEventType } from "./sseStepEventType";
 import type { SynthesizeStepData } from "./synthesizeStepData";
+import type { WebSearchStepData } from "./webSearchStepData";
 
 /**
  * Emitted when a complete reasoning step is parsed from the stream
@@ -24,5 +26,7 @@ export interface SseStepEvent {
     | RetrieveStepData
     | EvaluateStepData
     | PivotStepData
-    | SynthesizeStepData;
+    | SynthesizeStepData
+    | WebSearchStepData
+    | PatternStepData;
 }

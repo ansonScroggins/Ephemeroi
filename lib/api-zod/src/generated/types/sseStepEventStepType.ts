@@ -15,4 +15,6 @@ export const SseStepEventStepType = {
   EVALUATE: "EVALUATE",
   PIVOT: "PIVOT",
   SYNTHESIZE: "SYNTHESIZE",
+  WEB_SEARCH: "WEB_SEARCH",
+  PATTERN: "PATTERN",
 } as const;

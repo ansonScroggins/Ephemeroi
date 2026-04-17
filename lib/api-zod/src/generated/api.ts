@@ -16,18 +16,45 @@ export const HealthCheckResponse = zod.object({
 });
 
 /**
- * Accepts a research query and streams back structured metacognitive reasoning
-steps as Server-Sent Events (SSE). Each event is a JSON object on a `data:` line.
-The stream emits events in this order: `started` → repeated `token` (live typing) →
-repeated `step` (DECOMPOSE / RETRIEVE / EVALUATE / PIVOT / SYNTHESIZE) →
-`complete` → `{"done":true}` sentinel.
+ * Accepts a research query (plus optional `code` and `mode`) and streams back
+structured metacognitive reasoning steps as Server-Sent Events (SSE). Each event
+is a JSON object on a `data:` line.
+
+Mode-dependent step ordering:
+- `research` (default): `started` → `token`* → `step`(DECOMPOSE → RETRIEVE+ → EVALUATE → PIVOT? → SYNTHESIZE) → `complete` → `{"done":true}`
+- `code`: same step order as research, applied to code review; the SYNTHESIZE
+  `answer` field contains a fenced code block with the refactored code.
+- `web`: backend first emits `step`(WEB_SEARCH) with real sources fetched via
+  OpenAI Responses API web_search, then `step`(DECOMPOSE → PATTERN → RETRIEVE+ →
+  EVALUATE → PIVOT? → SYNTHESIZE).
+
+**SSE consumption note**: This endpoint uses `text/event-stream` and must be
+consumed with `fetch` + a `ReadableStream` reader (or `EventSource`). The
+generated OpenAI-style client stubs are not suitable for this endpoint because they
+model the response as a single resolved JSON value. Use the `use-search-stream`
+hook (or equivalent manual `fetch` streaming) to consume this endpoint.
 
  * @summary Run a metacognitive search
  */
+export const metacognitiveSearchBodyModeDefault = `research`;
 export const metacognitiveSearchBodyMaxDepthDefault = 5;
 
 export const MetacognitiveSearchBody = zod.object({
-  query: zod.string().describe("The research question to investigate"),
+  query: zod
+    .string()
+    .describe(
+      "The research question, or for code mode, a brief description of what the code does or what to focus on",
+    ),
+  mode: zod
+    .enum(["research", "code", "web"])
+    .default(metacognitiveSearchBodyModeDefault)
+    .describe(
+      "Search mode:\n- `research` — LLM-simulated metacognitive research (default)\n- `code` — paste code, get a metacognitive code review with refactored output\n- `web` — real web search with cross-source pattern detection\n",
+    ),
+  code: zod
+    .string()
+    .optional()
+    .describe("Source code to review (required when mode=code)"),
   maxDepth: zod
     .number()
     .default(metacognitiveSearchBodyMaxDepthDefault)

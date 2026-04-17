@@ -9,9 +9,33 @@ export interface HealthStatus {
   status: string;
 }
 
+/**
+ * Search mode:
+- `research` — LLM-simulated metacognitive research (default)
+- `code` — paste code, get a metacognitive code review with refactored output
+- `web` — real web search with cross-source pattern detection
+
+ */
+export type MetacognitiveSearchRequestMode =
+  (typeof MetacognitiveSearchRequestMode)[keyof typeof MetacognitiveSearchRequestMode];
+
+export const MetacognitiveSearchRequestMode = {
+  research: "research",
+  code: "code",
+  web: "web",
+} as const;
+
 export interface MetacognitiveSearchRequest {
-  /** The research question to investigate */
+  /** The research question, or for code mode, a brief description of what the code does or what to focus on */
   query: string;
+  /** Search mode:
+- `research` — LLM-simulated metacognitive research (default)
+- `code` — paste code, get a metacognitive code review with refactored output
+- `web` — real web search with cross-source pattern detection
+ */
+  mode?: MetacognitiveSearchRequestMode;
+  /** Source code to review (required when mode=code) */
+  code?: string;
   /** Maximum number of retrieval iterations (capped at 5) */
   maxDepth?: number;
 }
@@ -62,6 +86,8 @@ export const SseStepEventStepType = {
   EVALUATE: "EVALUATE",
   PIVOT: "PIVOT",
   SYNTHESIZE: "SYNTHESIZE",
+  WEB_SEARCH: "WEB_SEARCH",
+  PATTERN: "PATTERN",
 } as const;
 
 export type DecomposeStepDataStrategy =
@@ -148,6 +174,40 @@ export interface SynthesizeStepData {
   furtherReading: string[];
 }
 
+export interface WebSource {
+  /** 1-based source index used for cross-references */
+  index: number;
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+/**
+ * Real web search results retrieved before the metacognitive flow runs (web mode only)
+ */
+export interface WebSearchStepData {
+  query: string;
+  sources: WebSource[];
+  totalSources: number;
+}
+
+export interface DetectedPattern {
+  theme: string;
+  /** Number of sources in which this theme appears */
+  frequency: number;
+  /** 1-based source indices that support this pattern */
+  supportingSources: number[];
+}
+
+/**
+ * Cross-source pattern recognition over real web results (web mode only)
+ */
+export interface PatternStepData {
+  patterns: DetectedPattern[];
+  dominantThemes: string[];
+  outliers: string[];
+}
+
 /**
  * Emitted when a complete reasoning step is parsed from the stream
  */
@@ -159,7 +219,9 @@ export interface SseStepEvent {
     | RetrieveStepData
     | EvaluateStepData
     | PivotStepData
-    | SynthesizeStepData;
+    | SynthesizeStepData
+    | WebSearchStepData
+    | PatternStepData;
 }
 
 export type SseCompleteEventType =

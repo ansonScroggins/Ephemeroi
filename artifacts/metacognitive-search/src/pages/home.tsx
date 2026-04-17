@@ -40,7 +40,7 @@ export default function Home() {
           <div className="lg:col-span-3 flex flex-col gap-6">
             <section className="bg-card border border-border rounded-lg p-4 shadow-sm">
               <h2 className="text-xs font-mono uppercase tracking-widest text-muted-foreground mb-4 border-b border-border pb-2">Query Input</h2>
-              <QueryInterface onSubmit={startSearch} isRunning={isRunning} />
+              <QueryInterface onSubmit={(opts) => startSearch(opts)} isRunning={isRunning} />
             </section>
             
             <section className="bg-card border border-border rounded-lg p-4 shadow-sm flex-1 hidden lg:block">
@@ -62,6 +62,18 @@ export default function Home() {
                   <div className="flex justify-between text-xs mb-1">
                     <span className="text-muted-foreground font-mono">Max retrieval steps</span>
                     <span className="font-mono text-emerald-500">5</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-muted-foreground font-mono">Modes</span>
+                    <span className="font-mono text-cyan-400">research · code · web</span>
+                  </div>
+                </div>
+                <div>
+                  <div className="flex justify-between text-xs mb-1">
+                    <span className="text-muted-foreground font-mono">Web search</span>
+                    <span className="font-mono text-cyan-400">live (Responses API)</span>
                   </div>
                 </div>
               </div>

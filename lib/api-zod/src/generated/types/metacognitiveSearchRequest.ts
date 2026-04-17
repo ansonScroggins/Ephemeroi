@@ -5,10 +5,19 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { MetacognitiveSearchRequestMode } from "./metacognitiveSearchRequestMode";
 
 export interface MetacognitiveSearchRequest {
-  /** The research question to investigate */
+  /** The research question, or for code mode, a brief description of what the code does or what to focus on */
   query: string;
+  /** Search mode:
+- `research` — LLM-simulated metacognitive research (default)
+- `code` — paste code, get a metacognitive code review with refactored output
+- `web` — real web search with cross-source pattern detection
+ */
+  mode?: MetacognitiveSearchRequestMode;
+  /** Source code to review (required when mode=code) */
+  code?: string;
   /** Maximum number of retrieval iterations (capped at 5) */
   maxDepth?: number;
 }

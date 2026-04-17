@@ -32,11 +32,17 @@ paths:
       tags: [search]
       summary: Run a metacognitive search
       description: |
-        Accepts a research query and streams back structured metacognitive reasoning
-        steps as Server-Sent Events (SSE). Each event is a JSON object on a `data:` line.
-        The stream emits events in this order: `started` → repeated `token` (live typing) →
-        repeated `step` (DECOMPOSE / RETRIEVE / EVALUATE / PIVOT / SYNTHESIZE) →
-        `complete` → `{"done":true}` sentinel.
+        Accepts a research query (plus optional `code` and `mode`) and streams back
+        structured metacognitive reasoning steps as Server-Sent Events (SSE). Each event
+        is a JSON object on a `data:` line.
+
+        Mode-dependent step ordering:
+        - `research` (default): `started` → `token`* → `step`(DECOMPOSE → RETRIEVE+ → EVALUATE → PIVOT? → SYNTHESIZE) → `complete` → `{"done":true}`
+        - `code`: same step order as research, applied to code review; the SYNTHESIZE
+          `answer` field contains a fenced code block with the refactored code.
+        - `web`: backend first emits `step`(WEB_SEARCH) with real sources fetched via
+          OpenAI Responses API web_search, then `step`(DECOMPOSE → PATTERN → RETRIEVE+ →
+          EVALUATE → PIVOT? → SYNTHESIZE).
 
         **SSE consumption note**: This endpoint uses `text/event-stream` and must be
         consumed with `fetch` + a `ReadableStream` reader (or `EventSource`). The
@@ -90,7 +96,19 @@ components:
       properties:
         query:
           type: string
-          description: The research question to investigate
+          description: The research question, or for code mode, a brief description of what the code does or what to focus on
+        mode:
+          type: string
+          enum: [research, code, web]
+          default: research
+          description: |
+            Search mode:
+            - `research` — LLM-simulated metacognitive research (default)
+            - `code` — paste code, get a metacognitive code review with refactored output
+            - `web` — real web search with cross-source pattern detection
+        code:
+          type: string
+          description: Source code to review (required when mode=code)
         maxDepth:
           type: integer
           description: Maximum number of retrieval iterations (capped at 5)
@@ -140,7 +158,7 @@ components:
           enum: [step]
         stepType:
           type: string
-          enum: [DECOMPOSE, RETRIEVE, EVALUATE, PIVOT, SYNTHESIZE]
+          enum: [DECOMPOSE, RETRIEVE, EVALUATE, PIVOT, SYNTHESIZE, WEB_SEARCH, PATTERN]
         data:
           oneOf:
             - $ref: "#/components/schemas/DecomposeStepData"
@@ -148,6 +166,8 @@ components:
             - $ref: "#/components/schemas/EvaluateStepData"
             - $ref: "#/components/schemas/PivotStepData"
             - $ref: "#/components/schemas/SynthesizeStepData"
+            - $ref: "#/components/schemas/WebSearchStepData"
+            - $ref: "#/components/schemas/PatternStepData"
       required: [type, stepType, data]
 
     SseCompleteEvent:
@@ -269,6 +289,67 @@ components:
           items:
             type: string
       required: [answer, finalConfidence, keyFindings, openQuestions, furtherReading]
+
+    WebSearchStepData:
+      type: object
+      description: Real web search results retrieved before the metacognitive flow runs (web mode only)
+      properties:
+        query:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebSource"
+        totalSources:
+          type: integer
+      required: [query, sources, totalSources]
+
+    WebSource:
+      type: object
+      properties:
+        index:
+          type: integer
+          description: 1-based source index used for cross-references
+        title:
+          type: string
+        url:
+          type: string
+        snippet:
+          type: string
+      required: [index, title, url, snippet]
+
+    PatternStepData:
+      type: object
+      description: Cross-source pattern recognition over real web results (web mode only)
+      properties:
+        patterns:
+          type: array
+          items:
+            $ref: "#/components/schemas/DetectedPattern"
+        dominantThemes:
+          type: array
+          items:
+            type: string
+        outliers:
+          type: array
+          items:
+            type: string
+      required: [patterns, dominantThemes, outliers]
+
+    DetectedPattern:
+      type: object
+      properties:
+        theme:
+          type: string
+        frequency:
+          type: integer
+          description: Number of sources in which this theme appears
+        supportingSources:
+          type: array
+          description: 1-based source indices that support this pattern
+          items:
+            type: integer
+      required: [theme, frequency, supportingSources]
 
     # --- Sample queries ---
     SampleQueriesResponse:
