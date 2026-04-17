@@ -133,6 +133,22 @@ Please conduct a metacognitive search on this question. Use ${Math.min(maxDepth,
 
     let fullResponse = "";
     let lastProcessedLength = 0;
+    const emittedStepLines = new Set<string>();
+
+    const emitStepLine = (line: string) => {
+      if (emittedStepLines.has(line)) return;
+      const match = line.match(/^\[STEP:([A-Z]+)\]\s*(\{.*\})\s*$/);
+      if (match) {
+        const stepType = match[1];
+        try {
+          const data = JSON.parse(match[2]) as Record<string, unknown>;
+          emittedStepLines.add(line);
+          sendEvent({ type: "step", stepType, data });
+        } catch {
+          // Skip malformed JSON — model produced unparseable step
+        }
+      }
+    };
 
     for await (const chunk of stream) {
       const content = chunk.choices[0]?.delta?.content;
@@ -148,25 +164,21 @@ Please conduct a metacognitive search on this question. Use ${Math.min(maxDepth,
         const lastNewline = pending.lastIndexOf("\n");
         if (lastNewline !== -1) {
           const completeChunk = pending.slice(0, lastNewline);
-          const chunkLines = completeChunk.split("\n");
-          for (const line of chunkLines) {
-            const match = line.match(/^\[STEP:([A-Z]+)\]\s*(\{.*\})\s*$/);
-            if (match) {
-              const stepType = match[1];
-              try {
-                const data = JSON.parse(match[2]) as Record<string, unknown>;
-                sendEvent({ type: "step", stepType, data });
-              } catch {
-                // Skip malformed JSON — model produced unparseable step
-              }
-            }
+          for (const line of completeChunk.split("\n")) {
+            emitStepLine(line);
           }
           lastProcessedLength += lastNewline + 1;
         }
       }
     }
 
-    // Final pass: parse any remaining steps
+    // Emit any remaining step lines that were buffered without a trailing newline
+    // (e.g. the final SYNTHESIZE step if the model did not append a newline)
+    const tail = fullResponse.slice(lastProcessedLength);
+    for (const line of tail.split("\n")) {
+      emitStepLine(line);
+    }
+
     const allSteps = parseStepMarkers(fullResponse);
     sendEvent({ type: "complete", totalSteps: allSteps.length, rawResponse: fullResponse });
     res.write(`data: ${JSON.stringify({ done: true })}\n\n`);

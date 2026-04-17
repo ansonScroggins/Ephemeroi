@@ -48,7 +48,8 @@ export type StreamEvent =
   | { type: 'started'; query: string }
   | { type: 'token'; content: string }
   | ({ type: 'step' } & StepData)
-  | { type: 'complete'; totalSteps: number; rawResponse: string };
+  | { type: 'complete'; totalSteps: number; rawResponse: string }
+  | { type: 'error'; message: string };
 
 export function useSearchStream() {
   const [isRunning, setIsRunning] = useState(false);
@@ -132,6 +133,10 @@ export function useSearchStream() {
               } else if (event['type'] === 'complete') {
                 const completeEvent = event as { type: 'complete'; totalSteps: number; rawResponse: string };
                 setEvents(prev => [...prev, completeEvent]);
+                setIsRunning(false);
+                setActiveStepType(null);
+              } else if (event['type'] === 'error' && typeof event['message'] === 'string') {
+                setEvents(prev => [...prev, { type: 'error', message: event['message'] as string }]);
                 setIsRunning(false);
                 setActiveStepType(null);
               }

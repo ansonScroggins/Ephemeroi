@@ -100,6 +100,18 @@ function renderEvent(event: StreamEvent, index: number) {
     );
   }
 
+  if (event.type === 'error') {
+    return (
+      <div className="flex items-center gap-3 py-4" data-testid="stream-event-error">
+        <div className="h-px bg-border flex-1" />
+        <AlertTriangle className="h-5 w-5 text-rose-500" />
+        <span className="text-xs font-mono uppercase tracking-widest text-rose-500">Search Error</span>
+        <div className="h-px bg-border flex-1" />
+        <span className="sr-only">{event.message}</span>
+      </div>
+    );
+  }
+
   if (event.type === 'step') {
     switch (event.stepType) {
       case 'DECOMPOSE': {
