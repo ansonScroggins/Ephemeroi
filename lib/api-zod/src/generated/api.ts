@@ -14,3 +14,32 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * Accepts a research query and streams back structured metacognitive reasoning steps as SSE events
+ * @summary Run a metacognitive search
+ */
+export const metacognitiveSearchBodyMaxDepthDefault = 5;
+
+export const MetacognitiveSearchBody = zod.object({
+  query: zod.string().describe("The research question to investigate"),
+  maxDepth: zod
+    .number()
+    .default(metacognitiveSearchBodyMaxDepthDefault)
+    .describe("Maximum number of reasoning iterations"),
+});
+
+/**
+ * Returns a list of sample research questions to demonstrate the metacognitive search system
+ * @summary Get sample research queries
+ */
+export const GetSampleQueriesResponse = zod.object({
+  queries: zod.array(
+    zod.object({
+      id: zod.string(),
+      label: zod.string(),
+      query: zod.string(),
+      domain: zod.string(),
+    }),
+  ),
+});

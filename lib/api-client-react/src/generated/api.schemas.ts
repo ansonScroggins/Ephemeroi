@@ -8,3 +8,25 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface MetacognitiveSearchRequest {
+  /** The research question to investigate */
+  query: string;
+  /** Maximum number of reasoning iterations */
+  maxDepth?: number;
+}
+
+export interface SampleQuery {
+  id: string;
+  label: string;
+  query: string;
+  domain: string;
+}
+
+export interface SampleQueriesResponse {
+  queries: SampleQuery[];
+}
+
+export interface ErrorResponse {
+  error: string;
+}

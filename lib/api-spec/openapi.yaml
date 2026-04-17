@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: search
+    description: Metacognitive AI search operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,44 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+  /search/metacognitive:
+    post:
+      operationId: metacognitiveSearch
+      tags: [search]
+      summary: Run a metacognitive search
+      description: Accepts a research query and streams back structured metacognitive reasoning steps as SSE events
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetacognitiveSearchRequest"
+      responses:
+        "200":
+          description: SSE stream of metacognitive reasoning steps
+          content:
+            text/event-stream:
+              schema:
+                type: string
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /search/sample-queries:
+    get:
+      operationId: getSampleQueries
+      tags: [search]
+      summary: Get sample research queries
+      description: Returns a list of sample research questions to demonstrate the metacognitive search system
+      responses:
+        "200":
+          description: List of sample queries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SampleQueriesResponse"
 components:
   schemas:
     HealthStatus:
@@ -33,4 +73,47 @@ components:
           type: string
       required:
         - status
-
+    MetacognitiveSearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          description: The research question to investigate
+        maxDepth:
+          type: integer
+          description: Maximum number of reasoning iterations
+          default: 5
+      required:
+        - query
+    SampleQueriesResponse:
+      type: object
+      properties:
+        queries:
+          type: array
+          items:
+            $ref: "#/components/schemas/SampleQuery"
+      required:
+        - queries
+    SampleQuery:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        query:
+          type: string
+        domain:
+          type: string
+      required:
+        - id
+        - label
+        - query
+        - domain
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
