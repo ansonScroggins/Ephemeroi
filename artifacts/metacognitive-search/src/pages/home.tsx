@@ -1,7 +1,9 @@
-import React from "react";
+import React, { useEffect, useRef, useState, useCallback } from "react";
 import { ChatComposer } from "@/components/query-interface";
 import { ChatFeed } from "@/components/reasoning-stream";
-import { useSearchStream } from "@/hooks/use-search-stream";
+import { MemoryPill } from "@/components/memory-pill";
+import { useSearchStream, type SearchMode } from "@/hooks/use-search-stream";
+import { findSimilar, saveRun, type MemoryMatch } from "@/lib/memory";
 
 const ACTIVE_LABEL: Record<string, string> = {
   WEB_SEARCH: "searching the web…",
@@ -23,6 +25,47 @@ export default function Home() {
     liveTokenStream,
     activeStepType,
   } = useSearchStream();
+
+  // Memory layer state
+  const [memoryMatch, setMemoryMatch] = useState<MemoryMatch | null>(null);
+  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set());
+  const [prefill, setPrefill] = useState<{ query: string; nonce: number } | null>(null);
+  const [currentMode, setCurrentMode] = useState<SearchMode>("research");
+  const savedForRunRef = useRef<string | null>(null);
+
+  // Lookup similar past runs as the user types
+  const handleQueryChange = useCallback(
+    (q: string, mode: SearchMode) => {
+      if (q.trim().length < 4) {
+        setMemoryMatch(null);
+        return;
+      }
+      const match = findSimilar(q, mode);
+      if (match && !dismissedIds.has(match.entry.id)) {
+        setMemoryMatch(match);
+      } else {
+        setMemoryMatch(null);
+      }
+    },
+    [dismissedIds]
+  );
+
+  // Persist a run when it completes (REFLECT has arrived + run finished)
+  useEffect(() => {
+    if (isRunning) return;
+    if (!query) return;
+    const completed = events.some((e) => e.type === "complete");
+    if (!completed) return;
+    const runKey = `${currentMode}::${query}`;
+    if (savedForRunRef.current === runKey) return;
+    saveRun({ query, mode: currentMode, events });
+    savedForRunRef.current = runKey;
+  }, [isRunning, events, query, currentMode]);
+
+  // Hide the memory pill while a run is in progress
+  useEffect(() => {
+    if (isRunning) setMemoryMatch(null);
+  }, [isRunning]);
 
   const status = isRunning
     ? activeStepType
@@ -68,10 +111,29 @@ export default function Home() {
         </div>
       </main>
 
-      {/* Composer */}
+      {/* Composer (with optional memory pill above it) */}
       <div className="shrink-0 border-t border-border/40 bg-card/70 backdrop-blur-xl">
         <div className="w-full max-w-2xl mx-auto">
-          <ChatComposer onSubmit={(opts) => startSearch(opts)} isRunning={isRunning} />
+          <MemoryPill
+            match={memoryMatch}
+            onDismiss={() => {
+              if (memoryMatch) {
+                setDismissedIds((prev) => new Set(prev).add(memoryMatch.entry.id));
+              }
+              setMemoryMatch(null);
+            }}
+            onReuse={(q) => {
+              setPrefill({ query: q, nonce: Date.now() });
+              setMemoryMatch(null);
+            }}
+          />
+          <ChatComposer
+            onSubmit={(opts) => startSearch(opts)}
+            isRunning={isRunning}
+            onQueryChange={handleQueryChange}
+            onModeChange={setCurrentMode}
+            prefill={prefill}
+          />
         </div>
       </div>
     </div>

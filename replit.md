@@ -59,3 +59,13 @@ Each RETRIEVE step now declares the *posture* it's reading from, not just the so
 The model is instructed to switch lenses across a run rather than churn on one. EVALUATE carries a stagnation rule: if confidence isn't climbing across the last two retrievals or the same gap keeps surfacing, it must call out stagnation and trigger PIVOT, with the post-pivot retrieval escalating to PRISM. DECOMPOSE is told to follow a "concave shape" — wide breakdown, tight payoff at SYNTHESIZE.
 
 Lens fields (`lens`, `lensRationale`) are optional in the TS schema (`use-search-stream.ts`) so older runs and fallback parses still render. The renderer shows a small pill on RetrieveBubble (`data-testid="lens-{visible|infrared|uv|prism}"`).
+
+### Persistent memory (déjà vu)
+
+Client-side memory of past runs lives in `src/lib/memory.ts` (localStorage, key `metacog:memory:v1`, capped at 50 entries LRU). Each entry stores: query, mode, REFLECT `personalSummary`, SYNTHESIZE `finalConfidence`, lenses used, and normalized tokens for similarity matching.
+
+- Persisted on run completion in `home.tsx` (only if a `REFLECT.personalSummary` arrived; that's the durable insight worth remembering).
+- Lookup: `findSimilar(query, mode)` does Jaccard over normalized tokens (stopwords stripped, ≥3 chars), threshold `0.32`, mode-scoped.
+- UI: `components/memory-pill.tsx` renders an amber pill above the composer when a match is found while typing. Click to expand (shows past query, conclusion, confidence, lenses). "use that exact question" prefills the composer via a `prefill={query, nonce}` prop. "X" dismisses it for the session via a per-id dismissed set.
+
+Test IDs: `memory-pill`, `button-memory-toggle`, `button-memory-dismiss`, `button-memory-reuse`, `memory-detail`.

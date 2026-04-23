@@ -7,6 +7,9 @@ import type { SearchMode, StartSearchOptions } from "@/hooks/use-search-stream";
 interface ChatComposerProps {
   onSubmit: (opts: StartSearchOptions) => void;
   isRunning: boolean;
+  onQueryChange?: (q: string, mode: SearchMode) => void;
+  onModeChange?: (mode: SearchMode) => void;
+  prefill?: { query: string; nonce: number } | null;
 }
 
 const SAMPLE_CODE = `function findDuplicates(arr) {
@@ -29,7 +32,7 @@ const MODE_OPTIONS: Array<{ id: SearchMode; label: string; icon: typeof Brain }>
   { id: "web", label: "Web", icon: Globe },
 ];
 
-export function ChatComposer({ onSubmit, isRunning }: ChatComposerProps) {
+export function ChatComposer({ onSubmit, isRunning, onQueryChange, onModeChange, prefill }: ChatComposerProps) {
   const [mode, setMode] = useState<SearchMode>("research");
   const [query, setQuery] = useState("");
   const [code, setCode] = useState("");
@@ -50,6 +53,23 @@ export function ChatComposer({ onSubmit, isRunning }: ChatComposerProps) {
   useEffect(() => {
     if (mode !== "code") setShowCodeSheet(false);
   }, [mode]);
+
+  // Notify parent of query/mode changes for memory lookup
+  useEffect(() => {
+    onQueryChange?.(query, mode);
+  }, [query, mode, onQueryChange]);
+
+  useEffect(() => {
+    onModeChange?.(mode);
+  }, [mode, onModeChange]);
+
+  // Accept external prefill (from "use that exact question" in memory pill)
+  useEffect(() => {
+    if (prefill && prefill.query) {
+      setQuery(prefill.query);
+      textareaRef.current?.focus();
+    }
+  }, [prefill?.nonce]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const submit = () => {
     if (isRunning) return;
