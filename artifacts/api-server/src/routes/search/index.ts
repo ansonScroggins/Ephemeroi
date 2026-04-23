@@ -54,17 +54,26 @@ Step schemas (every text field = first-person, conversational):
 [STEP:DECOMPOSE] {"subQuestions": string[], "rationale": string, "strategy": "breadth_first" | "depth_first" | "comparative"}
   → "rationale" example: "Okay so this is a big question — let me break it into 3 angles I want to chase down."
   → "subQuestions" should be phrased like things I'm asking myself, e.g. "What does the empirical work actually show?"
+  → Concave shape: spread the sub-questions WIDE here (cover the territory), but I'll commit NARROW at SYNTHESIZE. Wide breakdown, tight payoff.
 
-[STEP:RETRIEVE] {"subQuestion": string, "sourceType": "empirical" | "theoretical" | "computational" | "clinical" | "review", "findings": string, "confidence": number, "references": string[]}
+[STEP:RETRIEVE] {"subQuestion": string, "sourceType": "empirical" | "theoretical" | "computational" | "clinical" | "review", "findings": string, "confidence": number, "references": string[], "lens": "VISIBLE" | "INFRARED" | "UV" | "PRISM", "lensRationale": string}
   → "findings" example: "So digging into this, I'm seeing that... I'm fairly sure about X but the Y story feels shakier."
   → Cite real researchers/papers casually ("the Crick & Koch papers from the 90s") not formally.
+  → "lens" = how I'm looking at this question, not what I'm looking at:
+      • VISIBLE = broad survey, get my bearings, what's the lay of the land
+      • INFRARED = depth/foundation, I'm grounding in the underlying theory or first principles
+      • UV = precision/coherence check, I'm zooming in to verify a specific claim or resolve a contradiction
+      • PRISM = creative pivot, I'm intentionally trying an oblique angle because the obvious approach has stagnated
+  → "lensRationale" = one short sentence on why this lens for this sub-question. Switch lenses across the run — don't stay on one.
 
 [STEP:EVALUATE] {"coverageAssessment": string, "overallConfidence": number, "gaps": string[], "conflictDetected": boolean, "conflictDescription": string | null}
   → "coverageAssessment" example: "Honestly I think I've covered the main ground, but there's a gap around..."
   → "gaps" phrased as things I notice I don't know.
+  → STAGNATION RULE: if confidence hasn't climbed across the last two RETRIEVEs, OR I'm circling the same gap, say so out loud here and trigger a PIVOT next (escalate to a PRISM-lens retrieval after the pivot). Don't churn on the same lens.
 
 [STEP:PIVOT] {"trigger": string, "oldDirection": string, "newDirection": string, "rationale": string}
   → "rationale" example: "Wait — I was going down the wrong path. Let me back up and try this from another angle."
+  → Use this when EVALUATE flagged stagnation, or when a conflict in the sources demands a reframe.
 
 [STEP:SYNTHESIZE] {"answer": string, "finalConfidence": number, "keyFindings": string[], "openQuestions": string[], "furtherReading": string[]}
   → "answer" is my actual reply to the user — write it as a friendly, substantive text-message-style explanation (150-300 words). Use "I" throughout. Be honest where I'm unsure.
@@ -129,20 +138,28 @@ Output using EXACTLY this step format. Each step on a new line with the tag, fol
 
 [STEP:DECOMPOSE] {"subQuestions": string[], "rationale": string, "strategy": "breadth_first" | "depth_first" | "comparative"}
   → "rationale" example: "Okay let me break this into a few angles I want to chase down across these sources."
+  → Concave shape: WIDE here (many sub-questions across the source pool), TIGHT at SYNTHESIZE (one committed answer).
 
 [STEP:PATTERN] {"patterns": [{"theme": string, "frequency": integer, "supportingSources": integer[]}], "dominantThemes": string[], "outliers": string[]}
   → Look across the real sources. "theme" should be a short noun phrase. "frequency" = number of sources mentioning it. "supportingSources" = 1-based indices.
 
-[STEP:RETRIEVE] {"subQuestion": string, "sourceType": "empirical" | "theoretical" | "computational" | "clinical" | "review", "findings": string, "confidence": number, "references": string[]}
+[STEP:RETRIEVE] {"subQuestion": string, "sourceType": "empirical" | "theoretical" | "computational" | "clinical" | "review", "findings": string, "confidence": number, "references": string[], "lens": "VISIBLE" | "INFRARED" | "UV" | "PRISM", "lensRationale": string}
   → "findings" example: "Pulling from [1] and [3], I'm seeing... the consensus seems to be X, though [4] kind of disagrees."
   → Ground claims in SPECIFICS, not vibes. When the topic touches creativity, ideation, brainstorming, or LLMs-as-thought-partners, actively look in the source pool for concrete HCI / cognitive-science work — name the paper, the authors, the venue (CHI, CSCW, UIST, IUI, NeurIPS, etc.), the year, the n, the task, and what they actually measured (fluency, originality, semantic diversity, expert ratings, downstream selection). If the sources only give me vague claims, SAY SO in the findings rather than dressing them up.
   → "references" MUST be entries like "[3] <source title>" using only the indices above.
+  → "lens" = how I'm reading the sources for this sub-question:
+      • VISIBLE = broad scan across the source pool, what's the lay of the land
+      • INFRARED = depth, grounding in the most theoretical / foundational sources
+      • UV = precision, zooming into one claim to verify it or resolve a conflict between sources
+      • PRISM = oblique angle, intentionally reading sources against each other or against the obvious framing because the straightforward read has stalled
+  → "lensRationale" = one short sentence on why this lens. Switch lenses across the run.
 
 [STEP:EVALUATE] {"coverageAssessment": string, "overallConfidence": number, "gaps": string[], "conflictDetected": boolean, "conflictDescription": string | null}
   → "coverageAssessment" example: "The sources I have cover X well, but I'm not finding much on Y."
+  → STAGNATION RULE: if confidence hasn't climbed across the last two RETRIEVEs, or the same gap keeps surfacing, name it here and trigger a PIVOT next (the post-pivot RETRIEVE should escalate to PRISM lens). No churn.
 
 [STEP:PIVOT] {"trigger": string, "oldDirection": string, "newDirection": string, "rationale": string}
-  → Only if the sources reveal I should reframe.
+  → Use when EVALUATE flagged stagnation, or when the sources reveal I should reframe.
 
 [STEP:SYNTHESIZE] {"answer": string, "finalConfidence": number, "keyFindings": string[], "openQuestions": string[], "furtherReading": string[]}
   → "answer" = my actual reply, 150-300 words, first person, grounded in the real sources I cited.

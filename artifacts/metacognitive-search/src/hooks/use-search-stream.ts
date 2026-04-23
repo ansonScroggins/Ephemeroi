@@ -8,12 +8,16 @@ export interface DecomposePayload {
   strategy: 'breadth_first' | 'depth_first' | 'comparative';
 }
 
+export type ReasoningLens = 'VISIBLE' | 'INFRARED' | 'UV' | 'PRISM';
+
 export interface RetrievePayload {
   subQuestion: string;
   sourceType: 'empirical' | 'theoretical' | 'computational' | 'clinical' | 'review';
   findings: string;
   confidence: number;
   references: string[];
+  lens?: ReasoningLens;
+  lensRationale?: string;
 }
 
 export interface EvaluatePayload {

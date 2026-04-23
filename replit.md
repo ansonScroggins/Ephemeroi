@@ -47,3 +47,15 @@ Backend: `artifacts/api-server/src/routes/search/index.ts` (`POST /api/search/me
 Model from `OPENAI_MODEL` env var (default `gpt-5.2`). Express body limit raised to 5mb in `app.ts` for pasted code.
 
 Note: `architecture-legend.tsx` is no longer rendered (replaced by the live status pill in the header) but the file is kept for now.
+
+### Reasoning lenses (RETRIEVE annotation)
+
+Each RETRIEVE step now declares the *posture* it's reading from, not just the source type:
+- **VISIBLE** — broad survey, getting bearings
+- **INFRARED** — depth/foundation, grounding in theory or first principles
+- **UV** — precision/coherence check, verifying a specific claim or resolving a conflict
+- **PRISM** — oblique angle, intentional creative pivot when the obvious read has stalled
+
+The model is instructed to switch lenses across a run rather than churn on one. EVALUATE carries a stagnation rule: if confidence isn't climbing across the last two retrievals or the same gap keeps surfacing, it must call out stagnation and trigger PIVOT, with the post-pivot retrieval escalating to PRISM. DECOMPOSE is told to follow a "concave shape" — wide breakdown, tight payoff at SYNTHESIZE.
+
+Lens fields (`lens`, `lensRationale`) are optional in the TS schema (`use-search-stream.ts`) so older runs and fallback parses still render. The renderer shows a small pill on RetrieveBubble (`data-testid="lens-{visible|infrared|uv|prism}"`).

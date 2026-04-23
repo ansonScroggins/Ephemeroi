@@ -223,10 +223,29 @@ function DecomposeBubble({ d }: { d: DecomposePayload }) {
   );
 }
 
+const LENS_STYLE: Record<string, { color: string; label: string; emoji: string }> = {
+  VISIBLE:  { color: "text-slate-200 border-slate-400/40 bg-slate-400/10", label: "visible", emoji: "◐" },
+  INFRARED: { color: "text-rose-200 border-rose-400/40 bg-rose-400/10",     label: "infrared", emoji: "▼" },
+  UV:       { color: "text-violet-200 border-violet-400/40 bg-violet-400/10", label: "uv", emoji: "◆" },
+  PRISM:    { color: "text-fuchsia-200 border-fuchsia-400/40 bg-fuchsia-400/10", label: "prism", emoji: "✦" },
+};
+
 function RetrieveBubble({ d }: { d: RetrievePayload }) {
+  const lens = d.lens && LENS_STYLE[d.lens] ? LENS_STYLE[d.lens] : null;
   return (
     <AiBubble label={`${STEP_LABEL.RETRIEVE.label} · ${d.subQuestion}`} Icon={STEP_LABEL.RETRIEVE.Icon} accent="emerald" testId="stream-step-retrieve">
+      {lens && (
+        <div className={cn("inline-flex items-center gap-1 text-[10px] font-mono mb-1.5 px-2 py-0.5 rounded-full border", lens.color)} data-testid={`lens-${d.lens?.toLowerCase()}`}>
+          <span>{lens.emoji}</span>
+          <span className="uppercase tracking-wider">{lens.label} lens</span>
+        </div>
+      )}
       <p className="text-foreground/95 leading-relaxed">{d.findings}</p>
+      {d.lensRationale && (
+        <p className="text-[11px] text-muted-foreground/80 italic mt-1.5 leading-snug">
+          ↳ {d.lensRationale}
+        </p>
+      )}
       <div className="flex items-center gap-2 mt-2 text-[10px] font-mono text-muted-foreground">
         <span className="px-1.5 py-0.5 rounded bg-muted/60">{d.sourceType}</span>
         <span>confidence {(d.confidence * 100).toFixed(0)}%</span>
