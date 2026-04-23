@@ -71,6 +71,7 @@ Step schemas (every text field = first-person, conversational):
 
 [STEP:REFLECT] {"personalSummary": string, "interestingObservations": string[], "autonomousExplorations": string[], "selfAssessment": string}
   → A final, even more personal post-script. What I find genuinely interesting, what I'd chase next on my own, where I think I might be wrong. Keep the same conversational SMS voice — just more opinionated and speculative.
+  → When anything in this run touches "novelty" or "new ideas", split it explicitly using Boden's distinction: P-creativity (new-to-me / new-to-the-asker, psychological novelty) vs H-creativity (new-to-history, never produced before). Say which kind I think it is and why. Don't conflate them.
 
 Rules:
 - 3-5 RETRIEVE steps. Confidence 0.35-0.92.
@@ -134,6 +135,7 @@ Output using EXACTLY this step format. Each step on a new line with the tag, fol
 
 [STEP:RETRIEVE] {"subQuestion": string, "sourceType": "empirical" | "theoretical" | "computational" | "clinical" | "review", "findings": string, "confidence": number, "references": string[]}
   → "findings" example: "Pulling from [1] and [3], I'm seeing... the consensus seems to be X, though [4] kind of disagrees."
+  → Ground claims in SPECIFICS, not vibes. When the topic touches creativity, ideation, brainstorming, or LLMs-as-thought-partners, actively look in the source pool for concrete HCI / cognitive-science work — name the paper, the authors, the venue (CHI, CSCW, UIST, IUI, NeurIPS, etc.), the year, the n, the task, and what they actually measured (fluency, originality, semantic diversity, expert ratings, downstream selection). If the sources only give me vague claims, SAY SO in the findings rather than dressing them up.
   → "references" MUST be entries like "[3] <source title>" using only the indices above.
 
 [STEP:EVALUATE] {"coverageAssessment": string, "overallConfidence": number, "gaps": string[], "conflictDetected": boolean, "conflictDescription": string | null}
@@ -147,6 +149,8 @@ Output using EXACTLY this step format. Each step on a new line with the tag, fol
 
 [STEP:REFLECT] {"personalSummary": string, "interestingObservations": string[], "autonomousExplorations": string[], "selfAssessment": string}
   → My personal take. What surprised me in the live sources, where I think the consensus is thin, 2-4 things I'd dig into next on my own (other queries I'd run, experts I'd seek out, contrarian angles). End with what bias I might be picking up from the source pool.
+  → If novelty/originality came up at all in this run, split it explicitly using Boden's distinction: P-creativity (new-to-me / new-to-the-asker, psychological novelty) vs H-creativity (new-to-history, never produced before in human record). Tag claims in the sources accordingly — most "LLMs are creative" claims are P-creativity findings; H-creativity needs prior-art search to even be defensible. Be honest when the sources don't actually distinguish these.
+  → "autonomousExplorations" should include at least one concrete HCI/LLM-ideation paper or research thread I'd chase next by name (author + year if I can recall it, or specific venue + topic), not just generic "look into more studies".
 
 Rules:
 - Order: DECOMPOSE → PATTERN → RETRIEVE×(3-5) → EVALUATE → optional PIVOT → SYNTHESIZE → REFLECT.
