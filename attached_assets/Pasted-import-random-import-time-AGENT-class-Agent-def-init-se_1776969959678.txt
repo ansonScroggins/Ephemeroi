@@ -1,0 +1,79 @@
+import random
+import time
+
+# -------- AGENT --------
+class Agent:
+    def __init__(self, name):
+        self.name = name
+        self.beliefs = {"world": random.uniform(-0.5, 0.5)}
+        self.traits = {
+            "skepticism": random.uniform(0.3, 0.7),
+            "conformity": random.uniform(0.3, 0.7),
+            "curiosity": random.uniform(0.5, 1.0),
+        }
+        self.memory = []
+        self.score = 0
+
+    def perceive_world(self):
+        # simulated external signal
+        return random.uniform(-0.2, 0.2)
+
+    def update_from_world(self):
+        signal = self.perceive_world()
+        self.beliefs["world"] += signal * (1 - self.traits["skepticism"])
+
+    def broadcast(self):
+        return self.beliefs["world"]
+
+    def receive(self, others):
+        for other in others:
+            influence = other.broadcast()
+
+            weight = self.traits["conformity"] * (1 - self.traits["skepticism"])
+            delta = (influence - self.beliefs["world"]) * weight
+
+            self.beliefs["world"] += delta
+
+    def score_self(self):
+        coherence = -abs(self.beliefs["world"])  # avoid extremes
+        learning = len(self.memory) * 0.01
+        return coherence + learning
+
+    def evolve(self, prev_score):
+        current = self.score_self()
+
+        if current < prev_score:
+            self.traits["skepticism"] += 0.02
+        else:
+            self.traits["curiosity"] += 0.02
+
+        self.score = current
+
+# -------- SIMULATION --------
+agents = [Agent(f"A{i}") for i in range(5)]
+
+while True:
+    print("\n--- STEP ---")
+
+    # 1. world influence
+    for agent in agents:
+        agent.update_from_world()
+
+    # 2. social interaction
+    for agent in agents:
+        others = [a for a in agents if a != agent]
+        agent.receive(others)
+
+    # 3. evolution
+    for agent in agents:
+        prev = agent.score
+        agent.evolve(prev)
+
+    # 4. print state
+    for agent in agents:
+        print(agent.name,
+              "belief:", round(agent.beliefs["world"], 3),
+              "traits:", {k: round(v, 2) for k, v in agent.traits.items()},
+              "score:", round(agent.score, 3))
+
+    time.sleep(2)
