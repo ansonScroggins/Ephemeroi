@@ -1,21 +1,8 @@
 import { Router, type IRouter } from "express";
 import { z } from "zod";
-import { openai, OpenAI, type OpenAIClient } from "@workspace/integrations-openai-ai-server";
+import { openai } from "@workspace/integrations-openai-ai-server";
 
 const router: IRouter = Router();
-
-// Lazy Groq client for fast agent chatter; OpenAI used for narrator summaries.
-let groqClient: OpenAIClient | null = null;
-function getGroq(): OpenAIClient | null {
-  if (!process.env["GROQ_API_KEY"]) return null;
-  if (!groqClient) {
-    groqClient = new OpenAI({
-      apiKey: process.env["GROQ_API_KEY"],
-      baseURL: "https://api.groq.com/openai/v1",
-    });
-  }
-  return groqClient;
-}
 
 const SimulateBody = z.object({
   topic: z.string().min(2).max(280),
@@ -247,14 +234,9 @@ router.post("/society/simulate", async (req, res): Promise<void> => {
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   };
 
-  const groq = getGroq();
-  const groqModel = process.env["GROQ_MODEL"] ?? "llama-3.3-70b-versatile";
-  const openaiModel = process.env["OPENAI_MODEL"] ?? "gpt-5.2";
-
-  // Agents for chatter prefer Groq; fall back to OpenAI if no Groq.
-  const agentClient: OpenAIClient = groq ?? openai;
-  const agentModel = groq ? groqModel : openaiModel;
-  const agentProvider = groq ? "groq" : "openai";
+  // One model for both agent chatter and narrator beats.
+  const model = process.env["OPENAI_MODEL"] ?? "gpt-5.2";
+  const agentClient = openai;
 
   // Cancel in-flight LLM calls and stop the loop if the client disconnects.
   const abort = new AbortController();
@@ -284,10 +266,8 @@ router.post("/society/simulate", async (req, res): Promise<void> => {
         belief: a.beliefs[topic] ?? 0,
         agitator: !!a.agitator,
       })),
-      agentProvider,
-      agentModel,
-      narratorProvider: "openai",
-      narratorModel: openaiModel,
+      provider: "openai",
+      model,
     });
 
     const allStatements: Statement[] = [];
@@ -373,7 +353,7 @@ router.post("/society/simulate", async (req, res): Promise<void> => {
         try {
           const resp = await agentClient.chat.completions.create(
             {
-              model: agentModel,
+              model,
               max_completion_tokens: 220,
               response_format: { type: "json_object" },
               messages: [
@@ -432,7 +412,7 @@ router.post("/society/simulate", async (req, res): Promise<void> => {
           statements: allStatements,
           phase: "midway",
           round,
-          openaiModel,
+          model,
           signal: abort.signal,
         });
       }
@@ -448,7 +428,7 @@ router.post("/society/simulate", async (req, res): Promise<void> => {
       statements: allStatements,
       phase: "final",
       round: rounds,
-      openaiModel,
+      model,
       signal: abort.signal,
     });
 
@@ -477,10 +457,10 @@ async function emitNarrator(args: {
   statements: Statement[];
   phase: "midway" | "final";
   round: number;
-  openaiModel: string;
+  model: string;
   signal?: AbortSignal;
 }): Promise<void> {
-  const { send, topic, agents, statements, phase, round, openaiModel, signal } = args;
+  const { send, topic, agents, statements, phase, round, model, signal } = args;
   const beliefSummary = agents
     .map((a) => `  - ${a.name} (${a.archetype}): ${(a.beliefs[topic] ?? 0).toFixed(2)} (${describeBelief(a.beliefs[topic] ?? 0)})`)
     .join("\n");
@@ -506,7 +486,7 @@ Write the narrator beat now.`;
   try {
     const resp = await openai.chat.completions.create(
       {
-        model: openaiModel,
+        model,
         max_completion_tokens: 350,
         messages: [
           { role: "system", content: system },

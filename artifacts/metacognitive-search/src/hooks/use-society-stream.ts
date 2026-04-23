@@ -51,10 +51,8 @@ export interface SocietyState {
   /** all influence edges (used to draw the graph; weights aggregated) */
   influences: SocietyInfluence[];
   currentRound: number;
-  agentProvider?: string;
-  agentModel?: string;
-  narratorProvider?: string;
-  narratorModel?: string;
+  provider?: string;
+  model?: string;
   done: boolean;
   error?: string;
 }
@@ -172,10 +170,8 @@ function handleEvent(evt: Record<string, unknown>, setState: React.Dispatch<Reac
         agents,
         beliefs,
         reputation,
-        agentProvider: evt["agentProvider"] as string | undefined,
-        agentModel: evt["agentModel"] as string | undefined,
-        narratorProvider: evt["narratorProvider"] as string | undefined,
-        narratorModel: evt["narratorModel"] as string | undefined,
+        provider: evt["provider"] as string | undefined,
+        model: evt["model"] as string | undefined,
       };
     }
     if (t === "round_start") {

@@ -90,10 +90,8 @@ export default function Home() {
     }
     return "online";
   })();
-  const showGroqBadge = (currentMode !== "society" && provider === "groq") || (currentMode === "society" && societyState.agentProvider === "groq");
-  const groqBadgeTitle = currentMode === "society"
-    ? `agents via Groq · ${societyState.agentModel ?? ""}`.trim()
-    : (model ? `via Groq · ${model}` : "via Groq");
+  const showGroqBadge = currentMode !== "society" && provider === "groq";
+  const groqBadgeTitle = model ? `via Groq · ${model}` : "via Groq";
 
   return (
     <div className="h-[100dvh] bg-gradient-to-b from-slate-950 via-background to-background text-foreground flex flex-col font-sans overflow-hidden">
