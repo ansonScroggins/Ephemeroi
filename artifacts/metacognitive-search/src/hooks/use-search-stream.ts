@@ -87,7 +87,7 @@ export type StepData =
   | { stepType: 'REFLECT'; data: ReflectPayload };
 
 export type StreamEvent =
-  | { type: 'started'; query: string }
+  | { type: 'started'; query: string; provider?: string; model?: string }
   | { type: 'token'; content: string }
   | ({ type: 'step' } & StepData)
   | { type: 'complete'; totalSteps: number; rawResponse: string }
@@ -105,6 +105,8 @@ export function useSearchStream() {
   const [events, setEvents] = useState<StreamEvent[]>([]);
   const [liveTokenStream, setLiveTokenStream] = useState("");
   const [activeStepType, setActiveStepType] = useState<string | null>(null);
+  const [provider, setProvider] = useState<string | null>(null);
+  const [model, setModel] = useState<string | null>(null);
 
   const activeAbortController = useRef<AbortController | null>(null);
 
@@ -118,6 +120,8 @@ export function useSearchStream() {
     setLiveTokenStream("");
     setIsRunning(true);
     setActiveStepType(null);
+    setProvider(null);
+    setModel(null);
 
     const abortController = new AbortController();
     activeAbortController.current = abortController;
@@ -179,7 +183,11 @@ export function useSearchStream() {
               }
 
               if (event['type'] === 'started' && typeof event['query'] === 'string') {
-                setEvents([{ type: 'started', query: event['query'] }]);
+                const startedProvider = typeof event['provider'] === 'string' ? event['provider'] : undefined;
+                const startedModel = typeof event['model'] === 'string' ? event['model'] : undefined;
+                setEvents([{ type: 'started', query: event['query'], provider: startedProvider, model: startedModel }]);
+                if (startedProvider) setProvider(startedProvider);
+                if (startedModel) setModel(startedModel);
               } else if (event['type'] === 'token' && typeof event['content'] === 'string') {
                 setLiveTokenStream(prev => prev + (event['content'] as string));
               } else if (event['type'] === 'step') {
@@ -240,6 +248,8 @@ export function useSearchStream() {
     query,
     events,
     liveTokenStream,
-    activeStepType
+    activeStepType,
+    provider,
+    model,
   };
 }

@@ -46,6 +46,8 @@ UI:
 Backend: `artifacts/api-server/src/routes/search/index.ts` (`POST /api/search/metacognitive`, SSE).
 Model from `OPENAI_MODEL` env var (default `gpt-5.2`). Express body limit raised to 5mb in `app.ts` for pasted code.
 
+**Groq fast path for Research mode.** When `GROQ_API_KEY` is present, Research (Think) mode is routed through Groq's OpenAI-compatible endpoint (`https://api.groq.com/openai/v1`) with `GROQ_MODEL` (default `llama-3.3-70b-versatile`) for noticeably faster streaming. Web mode stays on OpenAI (needs the Responses API + `web_search` tool); Code mode stays on OpenAI for parity. The chosen provider/model is sent in the SSE `started` event and surfaced in the chat header as a small `⚡ Groq` badge (`data-testid="badge-provider"`). The Groq client is the standard `openai` SDK pointed at Groq's base URL — re-exported from `@workspace/integrations-openai-ai-server` as `OpenAI` (value) + `OpenAIClient` (type) so api-server doesn't need a direct `openai` dep.
+
 Note: `architecture-legend.tsx` is no longer rendered (replaced by the live status pill in the header) but the file is kept for now.
 
 ### Reasoning lenses (RETRIEVE annotation)

@@ -1,8 +1,24 @@
 import { Router, type IRouter } from "express";
-import { openai } from "@workspace/integrations-openai-ai-server";
+import { openai, OpenAI, type OpenAIClient } from "@workspace/integrations-openai-ai-server";
 import { MetacognitiveSearchBody, GetSampleQueriesResponse } from "@workspace/api-zod";
 
 const router: IRouter = Router();
+
+// Groq uses an OpenAI-compatible API. We lazily init a client when the env var
+// is present so Research mode can route to Groq for much faster inference.
+// Web mode stays on OpenAI (needs the Responses API + web_search tool).
+// Code mode also stays on OpenAI for consistency.
+let groqClient: OpenAIClient | null = null;
+function getGroqClient(): OpenAIClient | null {
+  if (!process.env["GROQ_API_KEY"]) return null;
+  if (!groqClient) {
+    groqClient = new OpenAI({
+      apiKey: process.env["GROQ_API_KEY"],
+      baseURL: "https://api.groq.com/openai/v1",
+    });
+  }
+  return groqClient;
+}
 
 const SAMPLE_QUERIES = [
   {
@@ -284,10 +300,27 @@ router.post("/search/metacognitive", async (req, res): Promise<void> => {
     res.write(`data: ${JSON.stringify(event)}\n\n`);
   };
 
-  const model = process.env["OPENAI_MODEL"] ?? "gpt-5.2";
+  const openaiModel = process.env["OPENAI_MODEL"] ?? "gpt-5.2";
+  const groqModel = process.env["GROQ_MODEL"] ?? "llama-3.3-70b-versatile";
+
+  // Route Research mode to Groq for speed when available; Web/Code stay on OpenAI.
+  const groq = getGroqClient();
+  const tryGroqFirst = mode === "research" && groq !== null;
+  let llmClient: OpenAIClient = tryGroqFirst && groq ? groq : openai;
+  let model = tryGroqFirst ? groqModel : openaiModel;
+  let provider = tryGroqFirst ? "groq" : "openai";
+
+  const isLikelyProviderError = (err: unknown): boolean => {
+    if (!err || typeof err !== "object") return false;
+    const e = err as { status?: number; code?: string; name?: string };
+    if (typeof e.status === "number" && (e.status === 401 || e.status === 403 || e.status === 429 || e.status >= 500)) return true;
+    if (e.code === "ECONNREFUSED" || e.code === "ETIMEDOUT" || e.code === "ENOTFOUND") return true;
+    if (e.name === "APIConnectionError" || e.name === "APIConnectionTimeoutError") return true;
+    return false;
+  };
 
   try {
-    sendEvent({ type: "started", query });
+    sendEvent({ type: "started", query, provider, model });
 
     let systemPrompt: string;
     let userPrompt: string;
@@ -352,15 +385,34 @@ Conduct a metacognitive search grounded in the ${sources.length} web sources pro
 Please conduct a metacognitive search on this question. Use ${Math.min(maxDepth, 5)} retrieval steps maximum. Output each step using the exact format specified.`;
     }
 
-    const stream = await openai.chat.completions.create({
-      model,
-      max_completion_tokens: 8192,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      stream: true,
-    });
+    const buildStream = (client: OpenAIClient, m: string) =>
+      client.chat.completions.create({
+        model: m,
+        max_completion_tokens: 8192,
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        stream: true,
+      });
+
+    let stream: Awaited<ReturnType<typeof buildStream>>;
+    try {
+      stream = await buildStream(llmClient, model);
+    } catch (err) {
+      // If Groq was the primary and the failure looks provider-side, fall back to OpenAI.
+      // Safe to do here because no tokens have been streamed to the client yet.
+      if (tryGroqFirst && llmClient !== openai && isLikelyProviderError(err)) {
+        req.log.warn({ err }, "Groq call failed, falling back to OpenAI");
+        llmClient = openai;
+        model = openaiModel;
+        provider = "openai";
+        sendEvent({ type: "started", query, provider, model, fallback: "groq->openai" });
+        stream = await buildStream(llmClient, model);
+      } else {
+        throw err;
+      }
+    }
 
     let fullResponse = "";
     let lastProcessedLength = 0;

@@ -24,6 +24,8 @@ export default function Home() {
     events,
     liveTokenStream,
     activeStepType,
+    provider,
+    model,
   } = useSearchStream();
 
   // Memory layer state
@@ -90,7 +92,18 @@ export default function Home() {
             )}
           </div>
           <div className="text-center leading-tight">
-            <div className="text-sm font-semibold">Metacog</div>
+            <div className="text-sm font-semibold flex items-center gap-1.5 justify-center">
+              Metacog
+              {provider === "groq" && (
+                <span
+                  className="text-[9px] font-bold uppercase tracking-wider px-1.5 py-0.5 rounded-full bg-orange-500/15 text-orange-400 border border-orange-500/30 leading-none"
+                  data-testid="badge-provider"
+                  title={model ? `via Groq · ${model}` : "via Groq"}
+                >
+                  ⚡ Groq
+                </span>
+              )}
+            </div>
             <div className="text-[10px] text-muted-foreground italic" data-testid="text-status">
               {status}
             </div>
