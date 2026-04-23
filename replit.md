@@ -33,6 +33,7 @@ iMessage/SMS-style chat interface for an autonomous AI that thinks out loud. Thr
 - **Think** (research) — pure reasoning
 - **Code** — paste code, get refactor + commentary
 - **Web** — live web search via OpenAI Responses API + cross-source pattern detection
+- **Society** — multi-agent debate sim (Mira/Theo/Vex/Juno + optional Onyx agitator). Streams agent statements via Groq, narrator beats via OpenAI. Renders agent chips with belief bars, debate feed, circular influence graph (green=pulled toward favor, red=toward opposition), and reputation matrix. Endpoint: `POST /api/society/simulate` (SSE), hook: `use-society-stream.ts`, view: `society-view.tsx`. Cancels in-flight LLM calls on client disconnect via AbortController.
 
 The AI speaks in a single first-person voice across every step. All system prompts (research/code/web) instruct it to be conversational, use "I", and avoid academic register. Steps still emit structured JSON, but every text field reads like a text message.
 

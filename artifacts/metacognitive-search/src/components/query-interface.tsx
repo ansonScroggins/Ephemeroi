@@ -1,11 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useGetSampleQueries } from "@workspace/api-client-react";
-import { Brain, Code2, Globe, ArrowUp, Loader2, Plus, Sparkles, X } from "lucide-react";
+import { Brain, Code2, Globe, ArrowUp, Loader2, Plus, Sparkles, X, Users, AlertTriangle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SearchMode, StartSearchOptions } from "@/hooks/use-search-stream";
+import type { StartSocietyOptions } from "@/hooks/use-society-stream";
 
 interface ChatComposerProps {
   onSubmit: (opts: StartSearchOptions) => void;
+  onSocietySubmit?: (opts: StartSocietyOptions) => void;
   isRunning: boolean;
   onQueryChange?: (q: string, mode: SearchMode) => void;
   onModeChange?: (mode: SearchMode) => void;
@@ -30,14 +32,17 @@ const MODE_OPTIONS: Array<{ id: SearchMode; label: string; icon: typeof Brain }>
   { id: "research", label: "Think", icon: Brain },
   { id: "code", label: "Code", icon: Code2 },
   { id: "web", label: "Web", icon: Globe },
+  { id: "society", label: "Society", icon: Users },
 ];
 
-export function ChatComposer({ onSubmit, isRunning, onQueryChange, onModeChange, prefill }: ChatComposerProps) {
+export function ChatComposer({ onSubmit, onSocietySubmit, isRunning, onQueryChange, onModeChange, prefill }: ChatComposerProps) {
   const [mode, setMode] = useState<SearchMode>("research");
   const [query, setQuery] = useState("");
   const [code, setCode] = useState("");
   const [showSamples, setShowSamples] = useState(false);
   const [showCodeSheet, setShowCodeSheet] = useState(false);
+  const [includeAgitator, setIncludeAgitator] = useState(false);
+  const [rounds, setRounds] = useState(5);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const { data: sampleQueriesData } = useGetSampleQueries();
 
@@ -78,6 +83,10 @@ export function ChatComposer({ onSubmit, isRunning, onQueryChange, onModeChange,
       onSubmit({ query: query.trim() || "general code quality review", mode, code });
       setQuery("");
       setShowCodeSheet(false);
+    } else if (mode === "society") {
+      if (!query.trim()) return;
+      onSocietySubmit?.({ topic: query.trim(), rounds, includeAgitator });
+      setQuery("");
     } else {
       if (!query.trim()) return;
       onSubmit({ query: query.trim(), mode });
@@ -100,12 +109,53 @@ export function ChatComposer({ onSubmit, isRunning, onQueryChange, onModeChange,
       ? "Ask me anything…"
       : mode === "code"
       ? "Optional: tell me what to focus on…"
+      : mode === "society"
+      ? "Topic for the agents to debate…"
       : "Ask the live web…";
 
   return (
     <div className="flex flex-col" data-testid="composer-root">
+      {/* Society settings strip */}
+      {mode === "society" && (
+        <div
+          className="border-b border-border/40 bg-card/40 px-3 py-2 flex items-center gap-3 text-[11px]"
+          data-testid="society-settings"
+        >
+          <label className="flex items-center gap-1.5 cursor-pointer select-none">
+            <span className="text-muted-foreground font-mono uppercase tracking-widest text-[9px]">rounds</span>
+            <input
+              type="range"
+              min={2}
+              max={8}
+              step={1}
+              value={rounds}
+              onChange={(e) => setRounds(parseInt(e.target.value, 10))}
+              disabled={isRunning}
+              className="w-20 accent-primary"
+              data-testid="society-rounds"
+            />
+            <span className="text-foreground font-mono w-3 text-center" data-testid="society-rounds-value">{rounds}</span>
+          </label>
+          <button
+            type="button"
+            onClick={() => setIncludeAgitator((v) => !v)}
+            disabled={isRunning}
+            className={cn(
+              "ml-auto flex items-center gap-1.5 px-2.5 py-1 rounded-full border transition-colors text-[11px]",
+              includeAgitator
+                ? "bg-rose-500/15 border-rose-500/40 text-rose-300"
+                : "bg-muted/40 border-border/40 text-muted-foreground hover:text-foreground"
+            )}
+            data-testid="society-agitator-toggle"
+          >
+            <AlertTriangle className="h-3 w-3" />
+            {includeAgitator ? "agitator on" : "inject agitator"}
+          </button>
+        </div>
+      )}
+
       {/* Sample suggestions sheet */}
-      {showSamples && mode !== "code" && (
+      {showSamples && mode !== "code" && mode !== "society" && (
         <div
           className="border-b border-border/40 bg-card/40 px-3 py-2 max-h-[40dvh] overflow-y-auto animate-in slide-in-from-bottom-2 duration-200"
           data-testid="sheet-samples"

@@ -1,6 +1,6 @@
 import { useState, useCallback, useRef } from "react";
 
-export type SearchMode = "research" | "code" | "web";
+export type SearchMode = "research" | "code" | "web" | "society";
 
 export interface DecomposePayload {
   subQuestions: string[];
