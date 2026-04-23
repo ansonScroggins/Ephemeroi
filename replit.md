@@ -26,15 +26,24 @@ pnpm workspace monorepo using TypeScript. Each package manages its own dependenc
 
 See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
 
-## Metacognitive AI Search (artifacts/metacognitive-search)
+## Metacognitive AI Search — "Metacog" (artifacts/metacognitive-search)
 
-Research-grade web UI that streams structured metacognitive reasoning over SSE. Three modes:
+iMessage/SMS-style chat interface for an autonomous AI that thinks out loud. Three modes selectable as pills above the composer:
 
-- **Research** — LLM-simulated metacognitive flow (default)
-- **Code Review** — paste code, get a metacognitive code review with refactored code in the synthesis step
-- **Web Search** — uses OpenAI Responses API `web_search` tool to fetch real live sources, then runs the metacognitive flow grounded in those sources, with a `PATTERN` step that detects recurring themes across the results
+- **Think** (research) — pure reasoning
+- **Code** — paste code, get refactor + commentary
+- **Web** — live web search via OpenAI Responses API + cross-source pattern detection
 
-Step types: `DECOMPOSE`, `RETRIEVE`, `EVALUATE`, `PIVOT`, `SYNTHESIZE`, plus `WEB_SEARCH` and `PATTERN` (web mode only). Every run ends with a `REFLECT` step where the model drops the formal voice, speaks in the first person, shares personal observations, and proposes 2-4 directions it would explore on its own initiative.
+The AI speaks in a single first-person voice across every step. All system prompts (research/code/web) instruct it to be conversational, use "I", and avoid academic register. Steps still emit structured JSON, but every text field reads like a text message.
+
+Step types: `DECOMPOSE`, `RETRIEVE`, `EVALUATE`, `PIVOT`, `SYNTHESIZE`; plus `WEB_SEARCH` and `PATTERN` for web mode; every run ends with `REFLECT` (personal take + autonomous exploration suggestions).
+
+UI:
+- `pages/home.tsx` — single-column messaging-app layout with iMessage-style header (avatar + live status pill) and bottom composer
+- `components/query-interface.tsx` — `ChatComposer`: mode pills, auto-resizing textarea, Plus button opens code-paste sheet (code mode) or sample-questions sheet (others)
+- `components/reasoning-stream.tsx` — `ChatFeed`: user messages right-aligned (primary), AI bubbles left-aligned with per-step accent colors; typing indicator with animated dots; "delivered" stamp on completion
 
 Backend: `artifacts/api-server/src/routes/search/index.ts` (`POST /api/search/metacognitive`, SSE).
-Model is read from `OPENAI_MODEL` env var (default `gpt-5.2`). Express body limit raised to 5mb in `app.ts` to accommodate pasted code.
+Model from `OPENAI_MODEL` env var (default `gpt-5.2`). Express body limit raised to 5mb in `app.ts` for pasted code.
+
+Note: `architecture-legend.tsx` is no longer rendered (replaced by the live status pill in the header) but the file is kept for now.
