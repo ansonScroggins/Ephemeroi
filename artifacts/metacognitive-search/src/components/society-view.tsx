@@ -1,7 +1,7 @@
 import React, { useMemo, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 import type { SocietyState, SocietyAgent } from "@/hooks/use-society-stream";
-import { AlertTriangle, Sparkles, Globe2, Users, Network } from "lucide-react";
+import { AlertTriangle, Sparkles, Globe2, Users, Network, Telescope } from "lucide-react";
 
 interface SocietyViewProps {
   state: SocietyState;
@@ -246,7 +246,132 @@ function SidePanel({ state }: { state: SocietyState }) {
   return (
     <div className="hidden lg:flex flex-col gap-2 min-h-0">
       <InfluenceGraph state={state} />
+      <ConstellationMap state={state} />
       <ReputationMatrix state={state} />
+    </div>
+  );
+}
+
+function ConstellationMap({ state }: { state: SocietyState }) {
+  const size = 220;
+  const pad = 18;
+  const inner = size - pad * 2;
+
+  const agentsById = useMemo(
+    () => Object.fromEntries(state.agents.map((a) => [a.id, a])),
+    [state.agents],
+  );
+
+  // Map raw PCA coords into the SVG's [pad, size-pad] box, preserving aspect.
+  const layout = useMemo(() => {
+    const pos = state.clusterPositions;
+    if (pos.length === 0) return [];
+    const xs = pos.map((p) => p.x);
+    const ys = pos.map((p) => p.y);
+    const minX = Math.min(...xs);
+    const maxX = Math.max(...xs);
+    const minY = Math.min(...ys);
+    const maxY = Math.max(...ys);
+    const spanX = maxX - minX || 1;
+    const spanY = maxY - minY || 1;
+    const span = Math.max(spanX, spanY);
+    return pos.map((p) => {
+      const nx = (p.x - (minX + maxX) / 2) / span; // -0.5 .. 0.5
+      const ny = (p.y - (minY + maxY) / 2) / span;
+      return {
+        agentId: p.agentId,
+        cx: pad + inner / 2 + nx * inner * 0.85,
+        cy: pad + inner / 2 + ny * inner * 0.85,
+      };
+    });
+  }, [state.clusterPositions, inner]);
+
+  return (
+    <div
+      className="rounded-xl bg-card/30 border border-border/30 p-2 flex flex-col"
+      data-testid="constellation-map"
+    >
+      <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground font-mono mb-1">
+        <Telescope className="h-3 w-3" /> belief constellation
+        {state.clusterRound > 0 && (
+          <span className="ml-auto normal-case tracking-normal text-muted-foreground/70">
+            r{state.clusterRound}
+          </span>
+        )}
+      </div>
+      <div className="flex items-center justify-center">
+        {layout.length === 0 ? (
+          <div className="text-[10px] text-muted-foreground/70 italic font-mono py-6">
+            waiting for first round…
+          </div>
+        ) : (
+          <svg viewBox={`0 0 ${size} ${size}`} className="w-full max-w-[220px]">
+            {/* faint axes */}
+            <line
+              x1={pad}
+              y1={size / 2}
+              x2={size - pad}
+              y2={size / 2}
+              stroke="currentColor"
+              className="text-border/40"
+              strokeDasharray="2 4"
+            />
+            <line
+              x1={size / 2}
+              y1={pad}
+              x2={size / 2}
+              y2={size - pad}
+              stroke="currentColor"
+              className="text-border/40"
+              strokeDasharray="2 4"
+            />
+            {layout.map((p) => {
+              const a = agentsById[p.agentId];
+              if (!a) return null;
+              return (
+                <g
+                  key={p.agentId}
+                  style={{ transition: "transform 600ms ease" }}
+                  data-testid={`constellation-dot-${p.agentId}`}
+                >
+                  {a.agitator && (
+                    <circle
+                      cx={p.cx}
+                      cy={p.cy}
+                      r={11}
+                      fill="none"
+                      stroke="#f43f5e"
+                      strokeOpacity={0.5}
+                      strokeWidth={1.5}
+                    />
+                  )}
+                  <circle
+                    cx={p.cx}
+                    cy={p.cy}
+                    r={6}
+                    fill={a.color}
+                    stroke="rgba(0,0,0,0.4)"
+                    strokeWidth={1}
+                  />
+                  <text
+                    x={p.cx}
+                    y={p.cy - 9}
+                    fontSize="8"
+                    textAnchor="middle"
+                    fill="#cbd5e1"
+                    fontFamily="ui-monospace, monospace"
+                  >
+                    {a.name}
+                  </text>
+                </g>
+              );
+            })}
+          </svg>
+        )}
+      </div>
+      <div className="text-center text-[9px] text-muted-foreground/70 font-mono pt-0.5">
+        2D PCA of belief vectors · close = aligned
+      </div>
     </div>
   );
 }

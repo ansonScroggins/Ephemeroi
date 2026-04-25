@@ -32,6 +32,12 @@ export interface SocietyNarrator {
   text: string;
 }
 
+export interface SocietyClusterPosition {
+  agentId: string;
+  x: number;
+  y: number;
+}
+
 export interface SocietyState {
   topic: string;
   rounds: number;
@@ -50,6 +56,10 @@ export interface SocietyState {
   >;
   /** all influence edges (used to draw the graph; weights aggregated) */
   influences: SocietyInfluence[];
+  /** latest 2D PCA projection of belief vectors per agent */
+  clusterPositions: SocietyClusterPosition[];
+  /** which round the latest clusterPositions came from (0 = pre-round-1 init) */
+  clusterRound: number;
   currentRound: number;
   provider?: string;
   model?: string;
@@ -66,6 +76,8 @@ const empty: SocietyState = {
   reputation: {},
   feed: [],
   influences: [],
+  clusterPositions: [],
+  clusterRound: 0,
   currentRound: 0,
   done: false,
 };
@@ -230,6 +242,15 @@ function handleEvent(evt: Record<string, unknown>, setState: React.Dispatch<Reac
             direction: (evt["direction"] as "up" | "down") ?? "up",
           },
         ],
+      };
+    }
+    if (t === "cluster_positions") {
+      const positionsRaw = (evt["positions"] as SocietyClusterPosition[] | undefined) ?? [];
+      const round = (evt["round"] as number | undefined) ?? s.clusterRound;
+      return {
+        ...s,
+        clusterPositions: positionsRaw,
+        clusterRound: round,
       };
     }
     if (t === "narrator") {
