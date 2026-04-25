@@ -1,31 +1,17 @@
-import OpenAI from "openai";
+import { openai } from "@workspace/integrations-openai-ai-server";
 
 const EMBEDDING_MODEL = process.env["OPENAI_EMBEDDING_MODEL"] ?? "text-embedding-3-small";
 
-let _embeddingsClient: OpenAI | null = null;
-
 /**
- * Embeddings go through the user-provided OPENAI_API_KEY against api.openai.com
- * directly, because the Replit AI proxy (used for chat completions elsewhere in
- * this app) does not support the /embeddings endpoint.
+ * Batched embedding call. Returns one vector per input string.
+ *
+ * Routes through the shared `@workspace/integrations-openai-ai-server` client
+ * (the same one used for chat completions in reflect.ts) so we don't introduce
+ * a second auth path or require a separate OPENAI_API_KEY secret.
  */
-function getEmbeddingsClient(): OpenAI {
-  if (_embeddingsClient) return _embeddingsClient;
-  const apiKey = process.env["OPENAI_API_KEY"];
-  if (!apiKey) {
-    throw new Error(
-      "OPENAI_API_KEY is required for Society mode embeddings. Add it as a Replit Secret.",
-    );
-  }
-  _embeddingsClient = new OpenAI({ apiKey });
-  return _embeddingsClient;
-}
-
-/** Batched embedding call. Returns one vector per input string. */
 export async function embedBatch(inputs: string[], signal?: AbortSignal): Promise<number[][]> {
   if (inputs.length === 0) return [];
-  const client = getEmbeddingsClient();
-  const resp = await client.embeddings.create(
+  const resp = await openai.embeddings.create(
     { model: EMBEDDING_MODEL, input: inputs },
     { signal },
   );
