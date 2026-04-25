@@ -331,13 +331,14 @@ function ConstellationMap({ state }: { state: SocietyState }) {
               return (
                 <g
                   key={p.agentId}
+                  transform={`translate(${p.cx}, ${p.cy})`}
                   style={{ transition: "transform 600ms ease" }}
                   data-testid={`constellation-dot-${p.agentId}`}
                 >
                   {a.agitator && (
                     <circle
-                      cx={p.cx}
-                      cy={p.cy}
+                      cx={0}
+                      cy={0}
                       r={11}
                       fill="none"
                       stroke="#f43f5e"
@@ -346,16 +347,16 @@ function ConstellationMap({ state }: { state: SocietyState }) {
                     />
                   )}
                   <circle
-                    cx={p.cx}
-                    cy={p.cy}
+                    cx={0}
+                    cy={0}
                     r={6}
                     fill={a.color}
                     stroke="rgba(0,0,0,0.4)"
                     strokeWidth={1}
                   />
                   <text
-                    x={p.cx}
-                    y={p.cy - 9}
+                    x={0}
+                    y={-9}
                     fontSize="8"
                     textAnchor="middle"
                     fill="#cbd5e1"
