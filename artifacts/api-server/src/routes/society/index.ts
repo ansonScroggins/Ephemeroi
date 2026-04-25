@@ -634,9 +634,23 @@ Write the narrator beat now.`;
     const text = resp.choices[0]?.message?.content?.trim() ?? "";
     if (text) {
       send({ type: "narrator", phase, round, text });
+    } else {
+      send({
+        type: "narrator",
+        phase,
+        round,
+        text: "(the narrator is quiet this beat)",
+      });
     }
   } catch (err) {
-    // Narrator is best-effort.
+    // Narrator is best-effort, but surface a placeholder so the UI doesn't
+    // look broken when the LLM call fails.
+    send({
+      type: "narrator",
+      phase,
+      round,
+      text: "(narrator unavailable — continuing the simulation)",
+    });
     void err;
   }
 }
