@@ -326,9 +326,12 @@ ephemeroi/
 │   └── metrics/                # Phase, vacuum, deception, backbone telemetry
 │
 ├── frontend/
-│   ├── constellation_ui/       # Live phase-space instrument panel
-│   ├── phase_space_renderer/   # Force-field and convergence visualization
-│   └── websocket_client/       # Telemetry stream consumer
+│   ├── landing/                # Landing page (metacog/ephemeroi split interface)
+│   │   └── index.html
+│   ├── metacog/                # (TODO) Synchronous reasoning interface
+│   ├── ephemeroi-dashboard/    # (TODO) Autonomous system dashboard
+│   ├── shared/                 # (TODO) Common utilities, API client
+│   └── README.md               # Frontend service documentation
 │
 ├── simulation/
 │   ├── environments/           # Benchmark instances (100v/430c/seed42 canonical)
@@ -336,6 +339,34 @@ ephemeroi/
 │
 └── README.md
 ```
+
+-----
+
+## Frontend Services
+
+The system includes a **dual-interface architecture**:
+
+### Metacog (Synchronous)
+- **Mode**: Real-time, user-driven reasoning
+- **Route**: `/`
+- **UX**: Ask a question → watch it think step-by-step with visible retrieval lenses
+- **Memory**: Browser localStorage with déjà vu recall
+- **Status**: Landing page complete, interface implementation pending
+
+### Ephemeroi Dashboard (Autonomous)
+- **Mode**: Background, persistent worldview construction
+- **Route**: `/ephemeroi/`
+- **UX**: Check in on beliefs that evolved while you slept, see tensions and reports
+- **Memory**: Server-side belief store with confidence tracking
+- **Status**: Landing page complete, interface implementation pending
+
+**Landing Page** (`frontend/landing/index.html`):
+- Single-file HTML with inline CSS + JavaScript
+- Explains the metacog/ephemeroi duality
+- Animated telemetry stream, belief confidence bars
+- Responsive design with cosmogenesis-inspired styling
+
+See [`frontend/README.md`](frontend/README.md) for full frontend architecture and development roadmap.
 
 -----
 
