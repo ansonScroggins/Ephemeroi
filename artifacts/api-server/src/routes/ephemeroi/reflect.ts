@@ -118,7 +118,7 @@ function parseReflection(
   const importance = clamp(Number(obj["importance"]) || 0, 0, 1);
   const headlineRaw = typeof obj["headline"] === "string" ? obj["headline"] : "";
   const headline =
-    headlineRaw.trim().slice(0, 240) || input.observationTitle.slice(0, 240);
+    headlineRaw.trim().slice(0, 120) || input.observationTitle.slice(0, 120);
   const message =
     typeof obj["message"] === "string" ? obj["message"].trim() : "";
 
@@ -161,7 +161,7 @@ function parseReflection(
   return {
     importance,
     headline,
-    message: message.slice(0, 1000),
+    message: message.slice(0, 600),
     beliefUpdates,
     contradictions,
   };
@@ -172,7 +172,7 @@ function fallbackReflection(input: ReflectionInput): ReflectionOutput {
   // novelty, no belief updates, no contradictions.
   return {
     importance: clamp(input.novelty, 0, 1),
-    headline: input.observationTitle.slice(0, 240),
+    headline: input.observationTitle.slice(0, 120),
     message: input.observationSnippet.slice(0, 600),
     beliefUpdates: [],
     contradictions: [],

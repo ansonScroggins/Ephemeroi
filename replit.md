@@ -72,3 +72,39 @@ Client-side memory of past runs lives in `src/lib/memory.ts` (localStorage, key 
 - UI: `components/memory-pill.tsx` renders an amber pill above the composer when a match is found while typing. Click to expand (shows past query, conclusion, confidence, lenses). "use that exact question" prefills the composer via a `prefill={query, nonce}` prop. "X" dismisses it for the session via a per-id dismissed set.
 
 Test IDs: `memory-pill`, `button-memory-toggle`, `button-memory-dismiss`, `button-memory-reuse`, `memory-detail`.
+
+## Ephemeroi — autonomous explorer (artifacts/ephemeroi + api-server/routes/ephemeroi)
+
+Always-on background observer that watches the world (RSS feeds, URLs, search topics), embeds observations into memory, reflects via LLM to evolve beliefs and detect contradictions, and surfaces "reports" when something crosses an importance threshold. Reports are pushed to Telegram and to a live in-app dashboard.
+
+### Backend (`artifacts/api-server/src/routes/ephemeroi/`)
+- `loop.ts` — `EphemeroiLoop` singleton. `setTimeout`-driven schedule honoring `settings.intervalSeconds`. `inFlight` guard prevents overlapping cycles. `runOnce({throwOnError:true})` surfaces failures as HTTP 500 from the manual-trigger route; scheduled `tick()` swallows + re-schedules so the loop self-heals.
+- `ingest.ts` — RSS via `rss-parser`'s `parseString` + URL fetch via `safePublicFetch`. Search-source kind is a stub (synthesises a daily prompt observation) until a real web-search provider is wired up. Dedup by `urlHash` (SHA-256, 32 hex chars), unique index on `ephemeroi_observations.url_hash`.
+- `guard.ts` — `assertPublicHttpUrl` rejects non-http(s), localhost-style hostnames, and DNS-resolved private addresses (10/8, 127/8, 169.254/16, 172.16-31, 192.168/16, 100.64/10 CGNAT, multicast, link-local IPv6, ULA, IPv4-mapped IPv6). `safePublicFetch` enforces the guard at every redirect hop (`redirect: "manual"`, max 5 hops) and caps body size at 5 MiB. Note: residual DNS-rebinding TOCTOU between resolve and connect is acknowledged (would need a custom `https.Agent` lookup hook).
+- `reflect.ts` — `gpt-4o-mini` (override via `EPHEMEROI_REFLECTION_MODEL`) with `response_format: json_object`. Returns `{importance, headline (≤120), message (≤600), beliefUpdates[≤3], contradictions[≤2]}`. Bad JSON / LLM failure falls back to novelty-derived importance.
+- Importance is **blended** in the loop: `effective = importance × (1 − noveltyWeight) + novelty × noveltyWeight`, clamped 0..1. Novelty itself is `1 − maxCosine(observation, last 200 embedded observations)`; embeddings come from `routes/society/embeddings.ts` (text-embedding-3-small, 1536-d). Observations later in the same batch are added to the running reference set so they don't all look novel against the same baseline.
+- `store.ts` — Drizzle queries. `getSettings()` is race-safe singleton bootstrap (insert default, then re-select asc-id-limit-1; concurrent first callers converge). `upsertBelief` matches by exact proposition string and adjusts confidence by `deltaConfidence` (clamped −1..1).
+- `telegram.ts` — POSTs to Bot API with markdown-escaped headline+body. Failures are logged and swallowed so the cycle never crashes on Telegram errors; `delivered`/`deliveredAt` only flip when send succeeds. Gracefully no-ops if `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` are missing.
+- `bus.ts` + `/api/ephemeroi/stream` (SSE) — emits `{type, payload}` envelopes on the **default `message` channel** (so `EventSource.onmessage` in the browser picks it up without per-type listeners). Cleanup is bound to `res.on("close")`/`res.on("error")` with an idempotent guard. 25s `: ping` heartbeat. Event types: `hello | observation | belief | contradiction | report | cycle`.
+- `index.ts` wires all routes plus `ephemeroiLoop.start()` on first import.
+
+### DB schema (`lib/db/src/schema/ephemeroi.ts`)
+- `ephemeroi_settings` (singleton; defaults: 300s interval, 0.55 threshold, paused=false, telegramEnabled=true, noveltyWeight=0.5)
+- `ephemeroi_sources` (kind: rss|url|search, unique on (kind, target))
+- `ephemeroi_observations` (jsonb embedding `number[]`, doublePrecision novelty/importance, unique on `url_hash`, indexes on `observed_at` and `reflected`)
+- `ephemeroi_beliefs` (proposition, confidence −1..1, supportCount, contradictCount, embedding)
+- `ephemeroi_contradictions` (beliefId nullable, observationId nullable, summary, resolved)
+- `ephemeroi_reports` (importance, headline, body, observationIds jsonb, delivered/deliveredAt)
+- FK constraints intentionally absent so deleting a source does not delete its history.
+
+### Frontend (`artifacts/ephemeroi/`)
+React + Vite SPA at `/ephemeroi/`. Sidebar nav: Overview / Sources / Beliefs / Tensions / Reports / Settings. All pages use generated React Query hooks from `@workspace/api-client-react`. `use-ephemeroi-stream.ts` opens a single `EventSource` to `/api/ephemeroi/stream` and invalidates relevant queries on each event; reports + contradictions also fire toasts. Dark theme matches Metacog.
+
+### OpenAPI
+All routes live under `/ephemeroi/*` in `lib/api-spec/openapi.yaml` except the SSE stream (intentionally outside the spec — orval doesn't model SSE well; the frontend uses native EventSource).
+
+### Operational notes
+- Loop auto-starts on api-server boot. Default interval 5 min; lower to 30–120s while testing.
+- To verify end-to-end: POST `/api/ephemeroi/sources` with HN feed `https://news.ycombinator.com/rss`, lower threshold via PUT settings, then POST `/api/ephemeroi/cycle/run`.
+- Telegram delivery requires `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` secrets; loop silently skips delivery when missing.
+- Search-source kind is a v1 stub. Real web search ingestion (Tavily/Brave) is a deliberate follow-up.

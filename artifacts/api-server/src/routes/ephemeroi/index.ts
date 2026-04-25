@@ -37,6 +37,7 @@ import {
 } from "./wire";
 import { ephemeroiLoop, InFlightError } from "./loop";
 import { bus, type EphemeroiEvent } from "./bus";
+import { assertPublicHttpUrl } from "./guard";
 import { logger } from "../../lib/logger";
 
 const router: IRouter = Router();
@@ -134,13 +135,14 @@ router.post("/ephemeroi/sources", async (req, res) => {
   }
   if (parsed.data.kind === "rss" || parsed.data.kind === "url") {
     try {
-      // basic validation
-      // eslint-disable-next-line no-new
-      new URL(parsed.data.target);
-    } catch {
-      res
-        .status(400)
-        .json({ error: "target must be a valid URL for rss/url sources" });
+      await assertPublicHttpUrl(parsed.data.target);
+    } catch (err) {
+      res.status(400).json({
+        error:
+          err instanceof Error
+            ? err.message
+            : "target must be a valid public http(s) URL for rss/url sources",
+      });
       return;
     }
   }
@@ -287,7 +289,7 @@ router.post("/ephemeroi/cycle/run", async (_req, res) => {
 // NB: This route is intentionally outside the OpenAPI spec — SSE is not a
 // great fit for OpenAPI codegen. The frontend uses native EventSource.
 
-router.get("/ephemeroi/stream", (req, res) => {
+router.get("/ephemeroi/stream", (_req, res) => {
   res.setHeader("content-type", "text/event-stream");
   res.setHeader("cache-control", "no-cache, no-transform");
   res.setHeader("connection", "keep-alive");
@@ -296,16 +298,22 @@ router.get("/ephemeroi/stream", (req, res) => {
 
   const writeEvent = (ev: EphemeroiEvent) => {
     try {
-      res.write(`event: ${ev.type}\n`);
-      res.write(`data: ${JSON.stringify(ev.payload)}\n\n`);
+      // Emit on the default `message` channel as a `{type, payload}`
+      // envelope so the browser's EventSource.onmessage handler picks it up
+      // without per-type addEventListener wiring.
+      res.write(`data: ${JSON.stringify({ type: ev.type, payload: ev.payload })}\n\n`);
     } catch (err) {
       logger.debug({ err }, "Failed to write SSE event");
     }
   };
 
   // Initial hello so the client knows we're connected.
-  res.write(`event: hello\n`);
-  res.write(`data: ${JSON.stringify({ at: new Date().toISOString() })}\n\n`);
+  res.write(
+    `data: ${JSON.stringify({
+      type: "hello",
+      payload: { at: new Date().toISOString() },
+    })}\n\n`,
+  );
 
   const onEvent = (ev: EphemeroiEvent) => writeEvent(ev);
   bus.on("event", onEvent);
@@ -318,12 +326,18 @@ router.get("/ephemeroi/stream", (req, res) => {
     }
   }, 25_000);
 
+  let cleanedUp = false;
   const cleanup = () => {
+    if (cleanedUp) return;
+    cleanedUp = true;
     clearInterval(heartbeat);
     bus.off("event", onEvent);
   };
-  req.on("close", cleanup);
-  req.on("end", cleanup);
+  // Bind to the response so we react to true client disconnect, not request
+  // body completion (which fires immediately for GET requests in some
+  // Express/Node configurations).
+  res.on("close", cleanup);
+  res.on("error", cleanup);
 });
 
 export default router;

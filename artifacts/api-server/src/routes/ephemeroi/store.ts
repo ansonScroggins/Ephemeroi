@@ -22,17 +22,13 @@ export interface SettingsRow {
 }
 
 export async function getSettings(): Promise<SettingsRow> {
-  const rows = await db
+  const existing = await db
     .select()
     .from(ephemeroiSettingsTable)
     .orderBy(asc(ephemeroiSettingsTable.id))
     .limit(1);
-  if (rows.length === 0) {
-    const inserted = await db
-      .insert(ephemeroiSettingsTable)
-      .values({})
-      .returning();
-    const row = inserted[0]!;
+  if (existing.length > 0) {
+    const row = existing[0]!;
     return {
       id: row.id,
       intervalSeconds: row.intervalSeconds,
@@ -43,7 +39,21 @@ export async function getSettings(): Promise<SettingsRow> {
       noveltyDecay: row.noveltyDecay,
     };
   }
-  const row = rows[0]!;
+  // Race-safe singleton bootstrap: insert a default row, then re-read the
+  // canonical lowest-id row so concurrent first-callers all converge to the
+  // same SettingsRow even if multiple inserts succeed.
+  await db.insert(ephemeroiSettingsTable).values({}).returning({
+    id: ephemeroiSettingsTable.id,
+  });
+  const reread = await db
+    .select()
+    .from(ephemeroiSettingsTable)
+    .orderBy(asc(ephemeroiSettingsTable.id))
+    .limit(1);
+  if (reread.length === 0) {
+    throw new Error("ephemeroi_settings missing immediately after insert");
+  }
+  const row = reread[0]!;
   return {
     id: row.id,
     intervalSeconds: row.intervalSeconds,

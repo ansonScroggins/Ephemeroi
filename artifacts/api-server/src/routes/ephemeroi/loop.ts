@@ -71,11 +71,13 @@ class EphemeroiLoop {
 
   /**
    * Force one cycle to run right now (out-of-band from the schedule).
-   * Throws if a cycle is already in flight.
+   * Throws if a cycle is already in flight, or if the cycle itself errors —
+   * so callers (e.g. the manual-trigger HTTP endpoint) can surface the
+   * failure as a non-200 instead of returning misleading zero counts.
    */
   async runOnce(): Promise<CycleResult> {
     if (this.inFlight) throw new InFlightError();
-    return this.cycle();
+    return this.cycle({ throwOnError: true });
   }
 
   private async scheduleNext(): Promise<void> {
@@ -108,7 +110,9 @@ class EphemeroiLoop {
     }
   }
 
-  private async cycle(): Promise<CycleResult> {
+  private async cycle(
+    options: { throwOnError?: boolean } = {},
+  ): Promise<CycleResult> {
     this.inFlight = true;
     const startedAt = Date.now();
     const ranAt = new Date(startedAt);
@@ -116,6 +120,7 @@ class EphemeroiLoop {
     let beliefsUpdated = 0;
     let contradictionsFound = 0;
     let reportsCreated = 0;
+    let cycleError: Error | null = null;
     try {
       const settings = await getSettings();
 
@@ -143,6 +148,8 @@ class EphemeroiLoop {
         confidence: b.confidence,
       }));
 
+      const noveltyWeight = clamp(settings.noveltyWeight, 0, 1);
+
       for (const obs of unreflected) {
         try {
           // Re-fetch to get updated embedding/novelty after embedAndScoreNovelty.
@@ -153,6 +160,16 @@ class EphemeroiLoop {
             novelty: obs.novelty,
             recentBeliefs: beliefSummaries,
           });
+
+          // Blend the LLM's importance with the embedding-derived novelty
+          // signal so the user-tunable noveltyWeight setting actually has an
+          // effect on which observations cross the report threshold.
+          const blendedImportance = clamp(
+            reflection.importance * (1 - noveltyWeight) +
+              obs.novelty * noveltyWeight,
+            0,
+            1,
+          );
 
           // Apply belief updates.
           for (const upd of reflection.beliefUpdates) {
@@ -188,16 +205,16 @@ class EphemeroiLoop {
           }
 
           // Mark observation reflected.
-          await markObservationReflected(obs.id, reflection.importance);
-          obs.importance = reflection.importance;
+          await markObservationReflected(obs.id, blendedImportance);
+          obs.importance = blendedImportance;
           obs.reflected = true;
           obs.reflectedAt = new Date();
           bus.publish({ type: "observation", payload: observationToWire(obs) });
 
           // Possibly create a report.
-          if (reflection.importance >= settings.importanceThreshold) {
+          if (blendedImportance >= settings.importanceThreshold) {
             const report = await insertReport({
-              importance: reflection.importance,
+              importance: blendedImportance,
               headline: reflection.headline,
               body: reflection.message,
               observationIds: [obs.id],
@@ -226,33 +243,36 @@ class EphemeroiLoop {
 
       this.lastError = null;
     } catch (err) {
-      this.lastError = err instanceof Error ? err.message : String(err);
+      cycleError = err instanceof Error ? err : new Error(String(err));
+      this.lastError = cycleError.message;
       logger.warn({ err }, "Ephemeroi cycle failed");
-    } finally {
-      this.inFlight = false;
-      this.lastCycleAt = ranAt;
-      const result: CycleResult = {
-        observationsAdded,
-        beliefsUpdated,
-        contradictionsFound,
-        reportsCreated,
-        ranAt,
-        durationMs: Date.now() - startedAt,
-      };
-      bus.publish({
-        type: "cycle",
-        payload: {
-          observationsAdded: result.observationsAdded,
-          beliefsUpdated: result.beliefsUpdated,
-          contradictionsFound: result.contradictionsFound,
-          reportsCreated: result.reportsCreated,
-          ranAt: result.ranAt.toISOString(),
-          durationMs: result.durationMs,
-        },
-      });
-      // eslint-disable-next-line no-unsafe-finally
-      return result;
     }
+
+    this.inFlight = false;
+    this.lastCycleAt = ranAt;
+    const result: CycleResult = {
+      observationsAdded,
+      beliefsUpdated,
+      contradictionsFound,
+      reportsCreated,
+      ranAt,
+      durationMs: Date.now() - startedAt,
+    };
+    bus.publish({
+      type: "cycle",
+      payload: {
+        observationsAdded: result.observationsAdded,
+        beliefsUpdated: result.beliefsUpdated,
+        contradictionsFound: result.contradictionsFound,
+        reportsCreated: result.reportsCreated,
+        ranAt: result.ranAt.toISOString(),
+        durationMs: result.durationMs,
+      },
+    });
+    if (cycleError && options.throwOnError) {
+      throw cycleError;
+    }
+    return result;
   }
 }
 

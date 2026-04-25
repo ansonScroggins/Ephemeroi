@@ -9,6 +9,7 @@ import {
 } from "./store";
 import { bus } from "./bus";
 import { observationToWire } from "./wire";
+import { safePublicFetch } from "./guard";
 
 const MAX_ITEMS_PER_SOURCE = 8;
 const FETCH_TIMEOUT_MS = 12_000;
@@ -53,7 +54,20 @@ export async function ingestSource(source: SourceRow): Promise<{
 // ===== RSS =====
 
 async function ingestRss(source: SourceRow): Promise<ObservationRow[]> {
-  const feed = await rssParser.parseURL(source.target);
+  // Fetch the feed XML via the safe redirect-validating helper rather than
+  // letting rss-parser fetch directly — that way we control redirect
+  // validation and can't be SSRF'd via a public RSS URL that 302s to a
+  // private address.
+  const { body } = await safePublicFetch(source.target, {
+    headers: {
+      "user-agent":
+        "Ephemeroi/0.1 (autonomous explorer; +https://replit.com)",
+      accept:
+        "application/rss+xml, application/atom+xml, application/xml;q=0.9, text/xml;q=0.8, */*;q=0.5",
+    },
+    timeoutMs: FETCH_TIMEOUT_MS,
+  });
+  const feed = await rssParser.parseString(body);
   const items = (feed.items ?? []).slice(0, MAX_ITEMS_PER_SOURCE);
   const added: ObservationRow[] = [];
   for (const item of items) {
@@ -84,22 +98,14 @@ async function ingestRss(source: SourceRow): Promise<ObservationRow[]> {
 // ===== URL =====
 
 async function ingestUrl(source: SourceRow): Promise<ObservationRow[]> {
-  const ac = new AbortController();
-  const t = setTimeout(() => ac.abort(), FETCH_TIMEOUT_MS);
-  let html: string;
-  try {
-    const resp = await fetch(source.target, {
-      signal: ac.signal,
-      headers: {
-        "user-agent":
-          "Ephemeroi/0.1 (autonomous explorer; +https://replit.com)",
-      },
-    });
-    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
-    html = await resp.text();
-  } finally {
-    clearTimeout(t);
-  }
+  const { body: html } = await safePublicFetch(source.target, {
+    headers: {
+      "user-agent":
+        "Ephemeroi/0.1 (autonomous explorer; +https://replit.com)",
+      accept: "text/html,application/xhtml+xml,*/*;q=0.5",
+    },
+    timeoutMs: FETCH_TIMEOUT_MS,
+  });
 
   const title = extractTitle(html) ?? source.label;
   const snippet = extractMainText(html).slice(0, 1500);
