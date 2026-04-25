@@ -80,9 +80,34 @@ export interface GhContent {
   encoding?: string;
 }
 
+export interface GhUserRepo extends GhRepo {
+  fork: boolean;
+  archived: boolean;
+  disabled: boolean;
+  private: boolean;
+}
+
 export const github = {
   getRepo(owner: string, repo: string): Promise<GhRepo> {
     return ghGet<GhRepo>(`/repos/${owner}/${repo}`);
+  },
+  // Lists repos OWNED by a user or org (excludes those they only contribute to
+  // or have forked elsewhere). Sorted by pushed_at desc so the most active
+  // repos are watched first when we cap. type=owner avoids surfacing repos
+  // the user merely belongs to via membership; for orgs that's still the right
+  // call (owner = repos the org owns). Public-only is enforced upstream by
+  // filtering on `private: false`.
+  listUserRepos(
+    user: string,
+    opts?: { perPage?: number; page?: number },
+  ): Promise<GhUserRepo[]> {
+    return ghGet<GhUserRepo[]>(`/users/${user}/repos`, {
+      type: "owner",
+      sort: "pushed",
+      direction: "desc",
+      per_page: opts?.perPage ?? 100,
+      page: opts?.page ?? 1,
+    });
   },
   listCommits(
     owner: string,
@@ -162,4 +187,40 @@ export function parseRepoTarget(input: string): ParsedRepo | null {
   const owner = m[1]!.toLowerCase();
   const repo = m[2]!.toLowerCase();
   return { owner, repo, canonical: `${owner}/${repo}` };
+}
+
+export interface ParsedUser {
+  user: string;
+  canonical: string;
+}
+
+// Parses a github user/org target. Accepts:
+//   "ylecun"
+//   "https://github.com/ylecun"
+//   "https://github.com/ylecun/" (trailing slash)
+// Rejects anything that looks like owner/repo (those go through parseRepoTarget).
+// Same lowercase-canonicalization as parseRepoTarget so dedup works.
+export function parseUserTarget(input: string): ParsedUser | null {
+  const trimmed = input.trim();
+  if (!trimmed) return null;
+  try {
+    const u = new URL(trimmed);
+    if (u.hostname === "github.com" || u.hostname === "www.github.com") {
+      const parts = u.pathname.replace(/^\/+|\/+$/g, "").split("/").filter(Boolean);
+      // Only accept exactly one path segment — two means owner/repo.
+      if (parts.length !== 1) return null;
+      const user = parts[0]!.toLowerCase();
+      if (!/^[\w][\w-]*$/.test(user)) return null;
+      return { user, canonical: user };
+    }
+    return null;
+  } catch {
+    // Not a URL, fall through to bare-username matching.
+  }
+  // Bare username — letters/digits/hyphens, no slashes. GitHub usernames
+  // disallow leading hyphen and consecutive hyphens but accepting the
+  // looser regex here is fine; the API will 404 invalid ones.
+  if (!/^[\w][\w-]*$/.test(trimmed)) return null;
+  const user = trimmed.toLowerCase();
+  return { user, canonical: user };
 }

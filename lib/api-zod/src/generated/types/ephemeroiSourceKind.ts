@@ -7,7 +7,7 @@
  */
 
 /**
- * rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.
+ * rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30).
  */
 export type EphemeroiSourceKind =
   (typeof EphemeroiSourceKind)[keyof typeof EphemeroiSourceKind];
@@ -17,4 +17,5 @@ export const EphemeroiSourceKind = {
   url: "url",
   search: "search",
   github: "github",
+  github_user: "github_user",
 } as const;

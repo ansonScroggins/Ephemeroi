@@ -28,7 +28,7 @@ import {
   listRecentReports,
   type SourceKind,
 } from "./store";
-import { parseRepoTarget } from "../../lib/github-client";
+import { parseRepoTarget, parseUserTarget } from "../../lib/github-client";
 import {
   observationToWire,
   beliefToWire,
@@ -148,7 +148,9 @@ router.post("/ephemeroi/sources", async (req, res) => {
       return;
     }
   }
-  // Canonicalize github targets to "owner/repo" so dedup + bridge lookups work.
+  // Canonicalize github targets so dedup + bridge lookups work. github = a
+  // single repo ("owner/repo"); github_user = a whole user/org ("username")
+  // whose owned public repos are watched as a single fan-out source.
   let target = parsed.data.target;
   if (parsed.data.kind === "github") {
     const repo = parseRepoTarget(target);
@@ -159,6 +161,15 @@ router.post("/ephemeroi/sources", async (req, res) => {
       return;
     }
     target = repo.canonical;
+  } else if (parsed.data.kind === "github_user") {
+    const user = parseUserTarget(target);
+    if (!user) {
+      res.status(400).json({
+        error: "github_user target must be a username or a github.com/<user> URL",
+      });
+      return;
+    }
+    target = user.canonical;
   }
   try {
     const created = await createSource({
@@ -184,7 +195,7 @@ router.get("/ephemeroi/beliefs/by-source", async (req, res) => {
     res.status(400).json({ error: "kind and target query params required" });
     return;
   }
-  const allowed: ReadonlyArray<SourceKind> = ["rss", "url", "search", "github"];
+  const allowed: ReadonlyArray<SourceKind> = ["rss", "url", "search", "github", "github_user"];
   if (!allowed.includes(kindRaw as SourceKind)) {
     res.status(400).json({ error: `invalid kind, expected one of ${allowed.join(", ")}` });
     return;
@@ -197,6 +208,13 @@ router.get("/ephemeroi/beliefs/by-source", async (req, res) => {
       return;
     }
     target = repo.canonical;
+  } else if (kindRaw === "github_user") {
+    const user = parseUserTarget(targetRaw);
+    if (!user) {
+      res.status(400).json({ error: "invalid github_user target" });
+      return;
+    }
+    target = user.canonical;
   }
   try {
     const result = await listBeliefsBySource(kindRaw as SourceKind, target);

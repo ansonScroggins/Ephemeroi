@@ -10,7 +10,7 @@ import type { EphemeroiSourceKind } from "./ephemeroiSourceKind";
 export type ListEphemeroiBeliefsBySourceParams = {
   kind: EphemeroiSourceKind;
   /**
-   * For github, "owner/repo" or a github.com URL (canonicalized server-side).
+   * For github, "owner/repo" or a github.com URL (canonicalized server-side). For github_user, the username or org name.
    */
   target: string;
 };

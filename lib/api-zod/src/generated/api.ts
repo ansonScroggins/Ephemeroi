@@ -135,9 +135,9 @@ export const GetEphemeroiStateResponse = zod.object({
     zod.object({
       id: zod.number(),
       kind: zod
-        .enum(["rss", "url", "search", "github"])
+        .enum(["rss", "url", "search", "github", "github_user"])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.",
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30).",
         ),
       label: zod
         .string()
@@ -145,7 +145,7 @@ export const GetEphemeroiStateResponse = zod.object({
       target: zod
         .string()
         .describe(
-          'For rss\/url, the URL. For search, the query string. For github, \"owner\/repo\".',
+          'For rss\/url, the URL. For search, the query string. For github, \"owner\/repo\". For github_user, the username or org name.',
         ),
       active: zod.boolean(),
       lastPolledAt: zod.coerce.date().nullish(),
@@ -158,9 +158,9 @@ export const GetEphemeroiStateResponse = zod.object({
       id: zod.number(),
       sourceId: zod.number().nullish(),
       sourceKind: zod
-        .enum(["rss", "url", "search", "github"])
+        .enum(["rss", "url", "search", "github", "github_user"])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.",
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30).",
         ),
       sourceLabel: zod.string(),
       title: zod.string(),
@@ -368,9 +368,9 @@ export const ListEphemeroiSourcesResponse = zod.object({
     zod.object({
       id: zod.number(),
       kind: zod
-        .enum(["rss", "url", "search", "github"])
+        .enum(["rss", "url", "search", "github", "github_user"])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.",
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30).",
         ),
       label: zod
         .string()
@@ -378,7 +378,7 @@ export const ListEphemeroiSourcesResponse = zod.object({
       target: zod
         .string()
         .describe(
-          'For rss\/url, the URL. For search, the query string. For github, \"owner\/repo\".',
+          'For rss\/url, the URL. For search, the query string. For github, \"owner\/repo\". For github_user, the username or org name.',
         ),
       active: zod.boolean(),
       lastPolledAt: zod.coerce.date().nullish(),
@@ -393,9 +393,9 @@ export const ListEphemeroiSourcesResponse = zod.object({
  */
 export const CreateEphemeroiSourceBody = zod.object({
   kind: zod
-    .enum(["rss", "url", "search", "github"])
+    .enum(["rss", "url", "search", "github", "github_user"])
     .describe(
-      "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.",
+      "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30).",
     ),
   target: zod.string(),
   label: zod.string().optional(),
@@ -428,9 +428,9 @@ export const ListEphemeroiObservationsResponse = zod.object({
       id: zod.number(),
       sourceId: zod.number().nullish(),
       sourceKind: zod
-        .enum(["rss", "url", "search", "github"])
+        .enum(["rss", "url", "search", "github", "github_user"])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.",
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30).",
         ),
       sourceLabel: zod.string(),
       title: zod.string(),
@@ -484,11 +484,11 @@ observations from that source.
  * @summary Beliefs and contradictions tied to a specific watched source
  */
 export const ListEphemeroiBeliefsBySourceQueryParams = zod.object({
-  kind: zod.enum(["rss", "url", "search", "github"]),
+  kind: zod.enum(["rss", "url", "search", "github", "github_user"]),
   target: zod.coerce
     .string()
     .describe(
-      'For github, \"owner\/repo\" or a github.com URL (canonicalized server-side).',
+      'For github, \"owner\/repo\" or a github.com URL (canonicalized server-side). For github_user, the username or org name.',
     ),
 });
 
@@ -500,9 +500,9 @@ export const ListEphemeroiBeliefsBySourceResponse = zod.object({
     .object({
       id: zod.number(),
       kind: zod
-        .enum(["rss", "url", "search", "github"])
+        .enum(["rss", "url", "search", "github", "github_user"])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.",
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30).",
         ),
       label: zod
         .string()
@@ -510,7 +510,7 @@ export const ListEphemeroiBeliefsBySourceResponse = zod.object({
       target: zod
         .string()
         .describe(
-          'For rss\/url, the URL. For search, the query string. For github, \"owner\/repo\".',
+          'For rss\/url, the URL. For search, the query string. For github, \"owner\/repo\". For github_user, the username or org name.',
         ),
       active: zod.boolean(),
       lastPolledAt: zod.coerce.date().nullish(),

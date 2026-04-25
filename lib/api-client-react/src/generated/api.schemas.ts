@@ -359,7 +359,7 @@ export interface EphemeroiSettingsUpdate {
 }
 
 /**
- * rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.
+ * rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30).
  */
 export type EphemeroiSourceKind =
   (typeof EphemeroiSourceKind)[keyof typeof EphemeroiSourceKind];
@@ -369,6 +369,7 @@ export const EphemeroiSourceKind = {
   url: "url",
   search: "search",
   github: "github",
+  github_user: "github_user",
 } as const;
 
 export interface EphemeroiSource {
@@ -376,7 +377,7 @@ export interface EphemeroiSource {
   kind: EphemeroiSourceKind;
   /** Friendly display name (auto-derived if not given). */
   label: string;
-  /** For rss/url, the URL. For search, the query string. For github, "owner/repo". */
+  /** For rss/url, the URL. For search, the query string. For github, "owner/repo". For github_user, the username or org name. */
   target: string;
   active: boolean;
   lastPolledAt?: string | null;
@@ -519,7 +520,7 @@ export type ListEphemeroiObservationsParams = {
 export type ListEphemeroiBeliefsBySourceParams = {
   kind: EphemeroiSourceKind;
   /**
-   * For github, "owner/repo" or a github.com URL (canonicalized server-side).
+   * For github, "owner/repo" or a github.com URL (canonicalized server-side). For github_user, the username or org name.
    */
   target: string;
 };

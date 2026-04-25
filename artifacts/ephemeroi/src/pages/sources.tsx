@@ -7,7 +7,7 @@ import {
 } from "@workspace/api-client-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { Radio, Search, Link as LinkIcon, Trash2, Plus, AlertCircle, RefreshCw, Github } from "lucide-react";
+import { Radio, Search, Link as LinkIcon, Trash2, Plus, AlertCircle, RefreshCw, Github, Users } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,12 +24,16 @@ export default function Sources() {
   const deleteSource = useDeleteEphemeroiSource();
   const { toast } = useToast();
 
-  const [kind, setKind] = useState<"rss" | "url" | "search" | "github">("rss");
+  const [kind, setKind] = useState<"rss" | "url" | "search" | "github" | "github_user">("rss");
   const [target, setTarget] = useState("");
   const [label, setLabel] = useState("");
 
   const githubPattern = /^([\w][\w.-]*\/[\w][\w.-]*|https?:\/\/(?:www\.)?github\.com\/[\w][\w.-]*\/[\w][\w.-]*\/?$)/i;
+  // For github_user we accept a bare username/org or the github.com/<user> URL
+  // (no /repo path). Server re-validates and canonicalises.
+  const githubUserPattern = /^([\w][\w-]*|https?:\/\/(?:www\.)?github\.com\/[\w][\w-]*\/?$)/i;
   const githubInvalid = kind === "github" && target.length > 0 && !githubPattern.test(target.trim());
+  const githubUserInvalid = kind === "github_user" && target.length > 0 && !githubUserPattern.test(target.trim());
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -38,6 +42,14 @@ export default function Sources() {
       toast({
         title: "Invalid GitHub repo",
         description: "Use \"owner/repo\" or a github.com URL.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (kind === "github_user" && !githubUserPattern.test(target.trim())) {
+      toast({
+        title: "Invalid GitHub user",
+        description: "Use a username/org or a github.com/<user> URL.",
         variant: "destructive",
       });
       return;
@@ -76,6 +88,7 @@ export default function Sources() {
       case 'rss': return <Radio className="w-4 h-4" />;
       case 'search': return <Search className="w-4 h-4" />;
       case 'github': return <Github className="w-4 h-4" />;
+      case 'github_user': return <Users className="w-4 h-4" />;
       default: return <LinkIcon className="w-4 h-4" />;
     }
   };
@@ -83,10 +96,12 @@ export default function Sources() {
   const targetLabel =
     kind === 'search' ? 'Search Query'
       : kind === 'github' ? 'GitHub Repo'
+      : kind === 'github_user' ? 'GitHub User / Org'
       : 'URL';
   const targetPlaceholder =
     kind === 'search' ? 'e.g. "artificial intelligence advances"'
       : kind === 'github' ? 'owner/repo or https://github.com/owner/repo'
+      : kind === 'github_user' ? 'username or https://github.com/username'
       : 'https://...';
 
   if (isLoading) {
@@ -110,7 +125,7 @@ export default function Sources() {
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle>Add Source</CardTitle>
-          <CardDescription>Configure a new RSS feed, URL, recurring search query, or GitHub repo.</CardDescription>
+          <CardDescription>Configure a new RSS feed, URL, recurring search query, GitHub repo, or whole GitHub user/org.</CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleCreate} className="flex flex-col md:flex-row gap-4 items-end">
@@ -125,6 +140,7 @@ export default function Sources() {
                   <SelectItem value="url">Single URL</SelectItem>
                   <SelectItem value="search">Search Topic</SelectItem>
                   <SelectItem value="github">GitHub Repo</SelectItem>
+                  <SelectItem value="github_user">GitHub User / Org</SelectItem>
                 </SelectContent>
               </Select>
             </div>
@@ -139,11 +155,21 @@ export default function Sources() {
                 placeholder={targetPlaceholder}
                 className="bg-background"
                 required
-                aria-invalid={githubInvalid}
+                aria-invalid={githubInvalid || githubUserInvalid}
               />
               {githubInvalid && (
                 <p className="text-xs text-destructive">
                   Use the form <code>owner/repo</code> or a github.com URL.
+                </p>
+              )}
+              {githubUserInvalid && (
+                <p className="text-xs text-destructive">
+                  Use a github username/org name or a <code>github.com/&lt;user&gt;</code> URL.
+                </p>
+              )}
+              {kind === 'github_user' && !githubUserInvalid && (
+                <p className="text-xs text-muted-foreground">
+                  Watches up to 30 of this user's most-recently-pushed public repos (skips forks &amp; archived).
                 </p>
               )}
             </div>

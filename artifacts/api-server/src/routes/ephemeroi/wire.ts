@@ -10,7 +10,7 @@ import type {
 export interface ObservationWire {
   id: number;
   sourceId: number | null;
-  sourceKind: "rss" | "url" | "search" | "github";
+  sourceKind: "rss" | "url" | "search" | "github" | "github_user";
   sourceLabel: string;
   title: string;
   snippet: string;
@@ -107,7 +107,7 @@ export function reportToWire(r: ReportRow): ReportWire {
 
 export interface SourceWire {
   id: number;
-  kind: "rss" | "url" | "search" | "github";
+  kind: "rss" | "url" | "search" | "github" | "github_user";
   label: string;
   target: string;
   active: boolean;

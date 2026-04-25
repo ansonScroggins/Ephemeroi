@@ -97,7 +97,7 @@ export async function updateSettings(
 
 // ===== Sources =====
 
-export type SourceKind = "rss" | "url" | "search" | "github";
+export type SourceKind = "rss" | "url" | "search" | "github" | "github_user";
 
 export interface SourceRow {
   id: number;
@@ -205,6 +205,7 @@ export async function updateSourceCursor(
 function deriveLabel(kind: SourceKind, target: string): string {
   if (kind === "search") return `Search: ${target}`;
   if (kind === "github") return `GitHub: ${target}`;
+  if (kind === "github_user") return `GitHub user: ${target}`;
   try {
     const u = new URL(target);
     return u.hostname.replace(/^www\./, "");

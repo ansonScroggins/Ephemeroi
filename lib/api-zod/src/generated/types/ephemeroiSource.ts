@@ -12,7 +12,7 @@ export interface EphemeroiSource {
   kind: EphemeroiSourceKind;
   /** Friendly display name (auto-derived if not given). */
   label: string;
-  /** For rss/url, the URL. For search, the query string. For github, "owner/repo". */
+  /** For rss/url, the URL. For search, the query string. For github, "owner/repo". For github_user, the username or org name. */
   target: string;
   active: boolean;
   lastPolledAt?: Date | null;

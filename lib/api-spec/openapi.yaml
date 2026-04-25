@@ -237,7 +237,7 @@ paths:
           required: true
           schema:
             type: string
-          description: For github, "owner/repo" or a github.com URL (canonicalized server-side).
+          description: For github, "owner/repo" or a github.com URL (canonicalized server-side). For github_user, the username or org name.
       responses:
         "200":
           description: Beliefs and contradictions linked to the source
@@ -694,8 +694,8 @@ components:
 
     EphemeroiSourceKind:
       type: string
-      enum: [rss, url, search, github]
-      description: rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.
+      enum: [rss, url, search, github, github_user]
+      description: rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30).
 
     EphemeroiSource:
       type: object
@@ -709,7 +709,7 @@ components:
           description: Friendly display name (auto-derived if not given).
         target:
           type: string
-          description: For rss/url, the URL. For search, the query string. For github, "owner/repo".
+          description: For rss/url, the URL. For search, the query string. For github, "owner/repo". For github_user, the username or org name.
         active:
           type: boolean
         lastPolledAt:
