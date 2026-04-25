@@ -292,3 +292,218 @@ export interface SampleQueriesResponse {
 export interface ErrorResponse {
   error: string;
 }
+
+/**
+ * Tuning for the novelty signal that drives importance.
+ */
+export type EphemeroiSettingsNovelty = {
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  weight: number;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  decay: number;
+};
+
+export interface EphemeroiSettings {
+  /**
+   * How often the explorer cycle runs automatically.
+   * @minimum 30
+   * @maximum 86400
+   */
+  intervalSeconds: number;
+  /**
+   * Reflections must score at or above this to be reported (0..1).
+   * @minimum 0
+   * @maximum 1
+   */
+  importanceThreshold: number;
+  /** When true, the auto loop pauses (manual cycles still work). */
+  paused: boolean;
+  /** Whether reports are forwarded to Telegram. */
+  telegramEnabled: boolean;
+  /** Tuning for the novelty signal that drives importance. */
+  novelty: EphemeroiSettingsNovelty;
+}
+
+/**
+ * Partial update of explorer settings.
+ */
+export interface EphemeroiSettingsUpdate {
+  /**
+   * @minimum 30
+   * @maximum 86400
+   */
+  intervalSeconds?: number;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  importanceThreshold?: number;
+  paused?: boolean;
+  telegramEnabled?: boolean;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  noveltyWeight?: number;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  noveltyDecay?: number;
+}
+
+/**
+ * rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.
+ */
+export type EphemeroiSourceKind =
+  (typeof EphemeroiSourceKind)[keyof typeof EphemeroiSourceKind];
+
+export const EphemeroiSourceKind = {
+  rss: "rss",
+  url: "url",
+  search: "search",
+} as const;
+
+export interface EphemeroiSource {
+  id: number;
+  kind: EphemeroiSourceKind;
+  /** Friendly display name (auto-derived if not given). */
+  label: string;
+  /** For rss/url, the URL. For search, the query string. */
+  target: string;
+  active: boolean;
+  lastPolledAt?: string | null;
+  lastError?: string | null;
+  createdAt: string;
+}
+
+export interface EphemeroiSourceCreate {
+  kind: EphemeroiSourceKind;
+  target: string;
+  label?: string;
+}
+
+export interface EphemeroiSourcesResponse {
+  sources: EphemeroiSource[];
+}
+
+export interface EphemeroiObservation {
+  id: number;
+  sourceId?: number | null;
+  sourceKind: EphemeroiSourceKind;
+  sourceLabel: string;
+  title: string;
+  snippet: string;
+  url?: string | null;
+  /** 0..1, where 1 = nothing like this in memory yet. */
+  novelty: number;
+  /** Reflection's importance score (-1 if not yet reflected). */
+  importance: number;
+  observedAt: string;
+  reflectedAt?: string | null;
+}
+
+export interface EphemeroiObservationsResponse {
+  observations: EphemeroiObservation[];
+}
+
+export interface EphemeroiBelief {
+  id: number;
+  proposition: string;
+  /**
+   * -1 = strongly disbelieved, 0 = uncertain, 1 = strongly believed.
+   * @minimum -1
+   * @maximum 1
+   */
+  confidence: number;
+  supportCount: number;
+  contradictCount: number;
+  firstSeenAt: string;
+  lastUpdatedAt: string;
+}
+
+export interface EphemeroiBeliefsResponse {
+  beliefs: EphemeroiBelief[];
+}
+
+export interface EphemeroiContradiction {
+  id: number;
+  beliefId?: number | null;
+  beliefProposition?: string | null;
+  observationId?: number | null;
+  /** One-sentence description of the conflict. */
+  summary: string;
+  resolved: boolean;
+  detectedAt: string;
+}
+
+export interface EphemeroiContradictionsResponse {
+  contradictions: EphemeroiContradiction[];
+}
+
+export interface EphemeroiReport {
+  id: number;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  importance: number;
+  headline: string;
+  body: string;
+  observationIds: number[];
+  delivered: boolean;
+  deliveredAt?: string | null;
+  createdAt: string;
+}
+
+export interface EphemeroiReportsResponse {
+  reports: EphemeroiReport[];
+}
+
+export interface EphemeroiCycleResult {
+  observationsAdded: number;
+  beliefsUpdated: number;
+  contradictionsFound: number;
+  reportsCreated: number;
+  ranAt: string;
+  durationMs: number;
+}
+
+export type EphemeroiStateLoop = {
+  running: boolean;
+  lastCycleAt?: string | null;
+  nextCycleAt?: string | null;
+  lastError?: string | null;
+};
+
+export interface EphemeroiState {
+  settings: EphemeroiSettings;
+  sources: EphemeroiSource[];
+  recentObservations: EphemeroiObservation[];
+  beliefs: EphemeroiBelief[];
+  contradictions: EphemeroiContradiction[];
+  recentReports: EphemeroiReport[];
+  loop: EphemeroiStateLoop;
+}
+
+export type ListEphemeroiObservationsParams = {
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+};
+
+export type ListEphemeroiReportsParams = {
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+};

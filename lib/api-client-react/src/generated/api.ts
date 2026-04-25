@@ -17,8 +17,21 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  EphemeroiBeliefsResponse,
+  EphemeroiContradictionsResponse,
+  EphemeroiCycleResult,
+  EphemeroiObservationsResponse,
+  EphemeroiReportsResponse,
+  EphemeroiSettings,
+  EphemeroiSettingsUpdate,
+  EphemeroiSource,
+  EphemeroiSourceCreate,
+  EphemeroiSourcesResponse,
+  EphemeroiState,
   ErrorResponse,
   HealthStatus,
+  ListEphemeroiObservationsParams,
+  ListEphemeroiReportsParams,
   MetacognitiveSearchRequest,
   MetacognitiveSearchSseEvent,
   SampleQueriesResponse,
@@ -289,3 +302,932 @@ export function useGetSampleQueries<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * One-shot dashboard payload — settings, source counts, recent observations/reports/beliefs/contradictions, and loop status.
+ * @summary Snapshot of the explorer
+ */
+export const getGetEphemeroiStateUrl = () => {
+  return `/api/ephemeroi/state`;
+};
+
+export const getEphemeroiState = async (
+  options?: RequestInit,
+): Promise<EphemeroiState> => {
+  return customFetch<EphemeroiState>(getGetEphemeroiStateUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetEphemeroiStateQueryKey = () => {
+  return [`/api/ephemeroi/state`] as const;
+};
+
+export const getGetEphemeroiStateQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEphemeroiState>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiState>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetEphemeroiStateQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEphemeroiState>>
+  > = ({ signal }) => getEphemeroiState({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiState>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEphemeroiStateQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEphemeroiState>>
+>;
+export type GetEphemeroiStateQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Snapshot of the explorer
+ */
+
+export function useGetEphemeroiState<
+  TData = Awaited<ReturnType<typeof getEphemeroiState>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiState>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEphemeroiStateQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Get explorer settings
+ */
+export const getGetEphemeroiSettingsUrl = () => {
+  return `/api/ephemeroi/settings`;
+};
+
+export const getEphemeroiSettings = async (
+  options?: RequestInit,
+): Promise<EphemeroiSettings> => {
+  return customFetch<EphemeroiSettings>(getGetEphemeroiSettingsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetEphemeroiSettingsQueryKey = () => {
+  return [`/api/ephemeroi/settings`] as const;
+};
+
+export const getGetEphemeroiSettingsQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEphemeroiSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiSettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getGetEphemeroiSettingsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEphemeroiSettings>>
+  > = ({ signal }) => getEphemeroiSettings({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiSettings>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEphemeroiSettingsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEphemeroiSettings>>
+>;
+export type GetEphemeroiSettingsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Get explorer settings
+ */
+
+export function useGetEphemeroiSettings<
+  TData = Awaited<ReturnType<typeof getEphemeroiSettings>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiSettings>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEphemeroiSettingsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Update explorer settings
+ */
+export const getUpdateEphemeroiSettingsUrl = () => {
+  return `/api/ephemeroi/settings`;
+};
+
+export const updateEphemeroiSettings = async (
+  ephemeroiSettingsUpdate: EphemeroiSettingsUpdate,
+  options?: RequestInit,
+): Promise<EphemeroiSettings> => {
+  return customFetch<EphemeroiSettings>(getUpdateEphemeroiSettingsUrl(), {
+    ...options,
+    method: "PUT",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(ephemeroiSettingsUpdate),
+  });
+};
+
+export const getUpdateEphemeroiSettingsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateEphemeroiSettings>>,
+    TError,
+    { data: BodyType<EphemeroiSettingsUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof updateEphemeroiSettings>>,
+  TError,
+  { data: BodyType<EphemeroiSettingsUpdate> },
+  TContext
+> => {
+  const mutationKey = ["updateEphemeroiSettings"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof updateEphemeroiSettings>>,
+    { data: BodyType<EphemeroiSettingsUpdate> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return updateEphemeroiSettings(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type UpdateEphemeroiSettingsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof updateEphemeroiSettings>>
+>;
+export type UpdateEphemeroiSettingsMutationBody =
+  BodyType<EphemeroiSettingsUpdate>;
+export type UpdateEphemeroiSettingsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Update explorer settings
+ */
+export const useUpdateEphemeroiSettings = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof updateEphemeroiSettings>>,
+    TError,
+    { data: BodyType<EphemeroiSettingsUpdate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof updateEphemeroiSettings>>,
+  TError,
+  { data: BodyType<EphemeroiSettingsUpdate> },
+  TContext
+> => {
+  return useMutation(getUpdateEphemeroiSettingsMutationOptions(options));
+};
+
+/**
+ * @summary List configured sources (feeds, urls, search topics)
+ */
+export const getListEphemeroiSourcesUrl = () => {
+  return `/api/ephemeroi/sources`;
+};
+
+export const listEphemeroiSources = async (
+  options?: RequestInit,
+): Promise<EphemeroiSourcesResponse> => {
+  return customFetch<EphemeroiSourcesResponse>(getListEphemeroiSourcesUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListEphemeroiSourcesQueryKey = () => {
+  return [`/api/ephemeroi/sources`] as const;
+};
+
+export const getListEphemeroiSourcesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEphemeroiSources>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiSources>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListEphemeroiSourcesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEphemeroiSources>>
+  > = ({ signal }) => listEphemeroiSources({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiSources>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEphemeroiSourcesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEphemeroiSources>>
+>;
+export type ListEphemeroiSourcesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List configured sources (feeds, urls, search topics)
+ */
+
+export function useListEphemeroiSources<
+  TData = Awaited<ReturnType<typeof listEphemeroiSources>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiSources>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEphemeroiSourcesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Add a new source
+ */
+export const getCreateEphemeroiSourceUrl = () => {
+  return `/api/ephemeroi/sources`;
+};
+
+export const createEphemeroiSource = async (
+  ephemeroiSourceCreate: EphemeroiSourceCreate,
+  options?: RequestInit,
+): Promise<EphemeroiSource> => {
+  return customFetch<EphemeroiSource>(getCreateEphemeroiSourceUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(ephemeroiSourceCreate),
+  });
+};
+
+export const getCreateEphemeroiSourceMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createEphemeroiSource>>,
+    TError,
+    { data: BodyType<EphemeroiSourceCreate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createEphemeroiSource>>,
+  TError,
+  { data: BodyType<EphemeroiSourceCreate> },
+  TContext
+> => {
+  const mutationKey = ["createEphemeroiSource"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createEphemeroiSource>>,
+    { data: BodyType<EphemeroiSourceCreate> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createEphemeroiSource(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateEphemeroiSourceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createEphemeroiSource>>
+>;
+export type CreateEphemeroiSourceMutationBody = BodyType<EphemeroiSourceCreate>;
+export type CreateEphemeroiSourceMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Add a new source
+ */
+export const useCreateEphemeroiSource = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createEphemeroiSource>>,
+    TError,
+    { data: BodyType<EphemeroiSourceCreate> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createEphemeroiSource>>,
+  TError,
+  { data: BodyType<EphemeroiSourceCreate> },
+  TContext
+> => {
+  return useMutation(getCreateEphemeroiSourceMutationOptions(options));
+};
+
+/**
+ * @summary Remove a source
+ */
+export const getDeleteEphemeroiSourceUrl = (id: number) => {
+  return `/api/ephemeroi/sources/${id}`;
+};
+
+export const deleteEphemeroiSource = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteEphemeroiSourceUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteEphemeroiSourceMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteEphemeroiSource>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteEphemeroiSource>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteEphemeroiSource"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteEphemeroiSource>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteEphemeroiSource(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteEphemeroiSourceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteEphemeroiSource>>
+>;
+
+export type DeleteEphemeroiSourceMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Remove a source
+ */
+export const useDeleteEphemeroiSource = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteEphemeroiSource>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteEphemeroiSource>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteEphemeroiSourceMutationOptions(options));
+};
+
+/**
+ * @summary List recent observations
+ */
+export const getListEphemeroiObservationsUrl = (
+  params?: ListEphemeroiObservationsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/ephemeroi/observations?${stringifiedParams}`
+    : `/api/ephemeroi/observations`;
+};
+
+export const listEphemeroiObservations = async (
+  params?: ListEphemeroiObservationsParams,
+  options?: RequestInit,
+): Promise<EphemeroiObservationsResponse> => {
+  return customFetch<EphemeroiObservationsResponse>(
+    getListEphemeroiObservationsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListEphemeroiObservationsQueryKey = (
+  params?: ListEphemeroiObservationsParams,
+) => {
+  return [`/api/ephemeroi/observations`, ...(params ? [params] : [])] as const;
+};
+
+export const getListEphemeroiObservationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEphemeroiObservations>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListEphemeroiObservationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEphemeroiObservations>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListEphemeroiObservationsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEphemeroiObservations>>
+  > = ({ signal }) =>
+    listEphemeroiObservations(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiObservations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEphemeroiObservationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEphemeroiObservations>>
+>;
+export type ListEphemeroiObservationsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List recent observations
+ */
+
+export function useListEphemeroiObservations<
+  TData = Awaited<ReturnType<typeof listEphemeroiObservations>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListEphemeroiObservationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEphemeroiObservations>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEphemeroiObservationsQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List current beliefs
+ */
+export const getListEphemeroiBeliefsUrl = () => {
+  return `/api/ephemeroi/beliefs`;
+};
+
+export const listEphemeroiBeliefs = async (
+  options?: RequestInit,
+): Promise<EphemeroiBeliefsResponse> => {
+  return customFetch<EphemeroiBeliefsResponse>(getListEphemeroiBeliefsUrl(), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListEphemeroiBeliefsQueryKey = () => {
+  return [`/api/ephemeroi/beliefs`] as const;
+};
+
+export const getListEphemeroiBeliefsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEphemeroiBeliefs>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiBeliefs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey = queryOptions?.queryKey ?? getListEphemeroiBeliefsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEphemeroiBeliefs>>
+  > = ({ signal }) => listEphemeroiBeliefs({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiBeliefs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEphemeroiBeliefsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEphemeroiBeliefs>>
+>;
+export type ListEphemeroiBeliefsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List current beliefs
+ */
+
+export function useListEphemeroiBeliefs<
+  TData = Awaited<ReturnType<typeof listEphemeroiBeliefs>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiBeliefs>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEphemeroiBeliefsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List unresolved contradictions
+ */
+export const getListEphemeroiContradictionsUrl = () => {
+  return `/api/ephemeroi/contradictions`;
+};
+
+export const listEphemeroiContradictions = async (
+  options?: RequestInit,
+): Promise<EphemeroiContradictionsResponse> => {
+  return customFetch<EphemeroiContradictionsResponse>(
+    getListEphemeroiContradictionsUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListEphemeroiContradictionsQueryKey = () => {
+  return [`/api/ephemeroi/contradictions`] as const;
+};
+
+export const getListEphemeroiContradictionsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEphemeroiContradictions>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiContradictions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListEphemeroiContradictionsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEphemeroiContradictions>>
+  > = ({ signal }) =>
+    listEphemeroiContradictions({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiContradictions>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEphemeroiContradictionsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEphemeroiContradictions>>
+>;
+export type ListEphemeroiContradictionsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List unresolved contradictions
+ */
+
+export function useListEphemeroiContradictions<
+  TData = Awaited<ReturnType<typeof listEphemeroiContradictions>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiContradictions>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEphemeroiContradictionsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary List recent reports (only those past the importance threshold)
+ */
+export const getListEphemeroiReportsUrl = (
+  params?: ListEphemeroiReportsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/ephemeroi/reports?${stringifiedParams}`
+    : `/api/ephemeroi/reports`;
+};
+
+export const listEphemeroiReports = async (
+  params?: ListEphemeroiReportsParams,
+  options?: RequestInit,
+): Promise<EphemeroiReportsResponse> => {
+  return customFetch<EphemeroiReportsResponse>(
+    getListEphemeroiReportsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListEphemeroiReportsQueryKey = (
+  params?: ListEphemeroiReportsParams,
+) => {
+  return [`/api/ephemeroi/reports`, ...(params ? [params] : [])] as const;
+};
+
+export const getListEphemeroiReportsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEphemeroiReports>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListEphemeroiReportsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEphemeroiReports>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListEphemeroiReportsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEphemeroiReports>>
+  > = ({ signal }) =>
+    listEphemeroiReports(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiReports>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEphemeroiReportsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEphemeroiReports>>
+>;
+export type ListEphemeroiReportsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List recent reports (only those past the importance threshold)
+ */
+
+export function useListEphemeroiReports<
+  TData = Awaited<ReturnType<typeof listEphemeroiReports>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListEphemeroiReportsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEphemeroiReports>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEphemeroiReportsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Forces an immediate fetch + reflect + report cycle outside the normal schedule.
+ * @summary Trigger one explorer cycle right now
+ */
+export const getRunEphemeroiCycleUrl = () => {
+  return `/api/ephemeroi/cycle/run`;
+};
+
+export const runEphemeroiCycle = async (
+  options?: RequestInit,
+): Promise<EphemeroiCycleResult> => {
+  return customFetch<EphemeroiCycleResult>(getRunEphemeroiCycleUrl(), {
+    ...options,
+    method: "POST",
+  });
+};
+
+export const getRunEphemeroiCycleMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runEphemeroiCycle>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runEphemeroiCycle>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["runEphemeroiCycle"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runEphemeroiCycle>>,
+    void
+  > = () => {
+    return runEphemeroiCycle(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunEphemeroiCycleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runEphemeroiCycle>>
+>;
+
+export type RunEphemeroiCycleMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Trigger one explorer cycle right now
+ */
+export const useRunEphemeroiCycle = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runEphemeroiCycle>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runEphemeroiCycle>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getRunEphemeroiCycleMutationOptions(options));
+};

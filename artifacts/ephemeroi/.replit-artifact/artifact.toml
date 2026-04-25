@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/ephemeroi/"
+title = "Ephemeroi"
+version = "1.0.0"
+id = "artifacts/ephemeroi"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/ephemeroi/" ]
+localPort = 22182
+
+[services.development]
+run = "pnpm --filter @workspace/ephemeroi run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/ephemeroi", "run", "build" ]
+publicDir = "artifacts/ephemeroi/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "22182"
+BASE_PATH = "/ephemeroi/"

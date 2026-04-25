@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: search
     description: Metacognitive AI search operations
+  - name: ephemeroi
+    description: Autonomous explorer (sources, observations, beliefs, contradictions, reports)
 paths:
   /healthz:
     get:
@@ -81,6 +83,190 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SampleQueriesResponse"
+
+  # ===== Ephemeroi: autonomous explorer =====
+  /ephemeroi/state:
+    get:
+      operationId: getEphemeroiState
+      tags: [ephemeroi]
+      summary: Snapshot of the explorer
+      description: One-shot dashboard payload — settings, source counts, recent observations/reports/beliefs/contradictions, and loop status.
+      responses:
+        "200":
+          description: Snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiState"
+  /ephemeroi/settings:
+    get:
+      operationId: getEphemeroiSettings
+      tags: [ephemeroi]
+      summary: Get explorer settings
+      responses:
+        "200":
+          description: Current settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSettings"
+    put:
+      operationId: updateEphemeroiSettings
+      tags: [ephemeroi]
+      summary: Update explorer settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EphemeroiSettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSettings"
+  /ephemeroi/sources:
+    get:
+      operationId: listEphemeroiSources
+      tags: [ephemeroi]
+      summary: List configured sources (feeds, urls, search topics)
+      responses:
+        "200":
+          description: All sources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSourcesResponse"
+    post:
+      operationId: createEphemeroiSource
+      tags: [ephemeroi]
+      summary: Add a new source
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EphemeroiSourceCreate"
+      responses:
+        "201":
+          description: Created source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSource"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/sources/{id}:
+    delete:
+      operationId: deleteEphemeroiSource
+      tags: [ephemeroi]
+      summary: Remove a source
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/observations:
+    get:
+      operationId: listEphemeroiObservations
+      tags: [ephemeroi]
+      summary: List recent observations
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Recent observations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiObservationsResponse"
+  /ephemeroi/beliefs:
+    get:
+      operationId: listEphemeroiBeliefs
+      tags: [ephemeroi]
+      summary: List current beliefs
+      responses:
+        "200":
+          description: Current beliefs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiBeliefsResponse"
+  /ephemeroi/contradictions:
+    get:
+      operationId: listEphemeroiContradictions
+      tags: [ephemeroi]
+      summary: List unresolved contradictions
+      responses:
+        "200":
+          description: Contradictions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiContradictionsResponse"
+  /ephemeroi/reports:
+    get:
+      operationId: listEphemeroiReports
+      tags: [ephemeroi]
+      summary: List recent reports (only those past the importance threshold)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Recent reports
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiReportsResponse"
+  /ephemeroi/cycle/run:
+    post:
+      operationId: runEphemeroiCycle
+      tags: [ephemeroi]
+      summary: Trigger one explorer cycle right now
+      description: Forces an immediate fetch + reflect + report cycle outside the normal schedule.
+      responses:
+        "200":
+          description: Cycle summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiCycleResult"
+        "409":
+          description: Cycle already in flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -409,3 +595,323 @@ components:
           type: string
       required:
         - error
+
+    # ===== Ephemeroi schemas =====
+    EphemeroiSettings:
+      type: object
+      properties:
+        intervalSeconds:
+          type: integer
+          description: How often the explorer cycle runs automatically.
+          minimum: 30
+          maximum: 86400
+        importanceThreshold:
+          type: number
+          description: Reflections must score at or above this to be reported (0..1).
+          minimum: 0
+          maximum: 1
+        paused:
+          type: boolean
+          description: When true, the auto loop pauses (manual cycles still work).
+        telegramEnabled:
+          type: boolean
+          description: Whether reports are forwarded to Telegram.
+        novelty:
+          type: object
+          description: Tuning for the novelty signal that drives importance.
+          properties:
+            weight:
+              type: number
+              minimum: 0
+              maximum: 1
+            decay:
+              type: number
+              minimum: 0
+              maximum: 1
+          required: [weight, decay]
+      required: [intervalSeconds, importanceThreshold, paused, telegramEnabled, novelty]
+
+    EphemeroiSettingsUpdate:
+      type: object
+      description: Partial update of explorer settings.
+      properties:
+        intervalSeconds:
+          type: integer
+          minimum: 30
+          maximum: 86400
+        importanceThreshold:
+          type: number
+          minimum: 0
+          maximum: 1
+        paused:
+          type: boolean
+        telegramEnabled:
+          type: boolean
+        noveltyWeight:
+          type: number
+          minimum: 0
+          maximum: 1
+        noveltyDecay:
+          type: number
+          minimum: 0
+          maximum: 1
+
+    EphemeroiSourceKind:
+      type: string
+      enum: [rss, url, search]
+      description: rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.
+
+    EphemeroiSource:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          $ref: "#/components/schemas/EphemeroiSourceKind"
+        label:
+          type: string
+          description: Friendly display name (auto-derived if not given).
+        target:
+          type: string
+          description: For rss/url, the URL. For search, the query string.
+        active:
+          type: boolean
+        lastPolledAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastError:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, kind, label, target, active, createdAt]
+
+    EphemeroiSourceCreate:
+      type: object
+      properties:
+        kind:
+          $ref: "#/components/schemas/EphemeroiSourceKind"
+        target:
+          type: string
+        label:
+          type: string
+      required: [kind, target]
+
+    EphemeroiSourcesResponse:
+      type: object
+      properties:
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiSource"
+      required: [sources]
+
+    EphemeroiObservation:
+      type: object
+      properties:
+        id:
+          type: integer
+        sourceId:
+          type: integer
+          nullable: true
+        sourceKind:
+          $ref: "#/components/schemas/EphemeroiSourceKind"
+        sourceLabel:
+          type: string
+        title:
+          type: string
+        snippet:
+          type: string
+        url:
+          type: string
+          nullable: true
+        novelty:
+          type: number
+          description: 0..1, where 1 = nothing like this in memory yet.
+        importance:
+          type: number
+          description: Reflection's importance score (-1 if not yet reflected).
+        observedAt:
+          type: string
+          format: date-time
+        reflectedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, sourceKind, sourceLabel, title, snippet, novelty, importance, observedAt]
+
+    EphemeroiObservationsResponse:
+      type: object
+      properties:
+        observations:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiObservation"
+      required: [observations]
+
+    EphemeroiBelief:
+      type: object
+      properties:
+        id:
+          type: integer
+        proposition:
+          type: string
+        confidence:
+          type: number
+          minimum: -1
+          maximum: 1
+          description: -1 = strongly disbelieved, 0 = uncertain, 1 = strongly believed.
+        supportCount:
+          type: integer
+        contradictCount:
+          type: integer
+        firstSeenAt:
+          type: string
+          format: date-time
+        lastUpdatedAt:
+          type: string
+          format: date-time
+      required: [id, proposition, confidence, supportCount, contradictCount, firstSeenAt, lastUpdatedAt]
+
+    EphemeroiBeliefsResponse:
+      type: object
+      properties:
+        beliefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiBelief"
+      required: [beliefs]
+
+    EphemeroiContradiction:
+      type: object
+      properties:
+        id:
+          type: integer
+        beliefId:
+          type: integer
+          nullable: true
+        beliefProposition:
+          type: string
+          nullable: true
+        observationId:
+          type: integer
+          nullable: true
+        summary:
+          type: string
+          description: One-sentence description of the conflict.
+        resolved:
+          type: boolean
+        detectedAt:
+          type: string
+          format: date-time
+      required: [id, summary, resolved, detectedAt]
+
+    EphemeroiContradictionsResponse:
+      type: object
+      properties:
+        contradictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiContradiction"
+      required: [contradictions]
+
+    EphemeroiReport:
+      type: object
+      properties:
+        id:
+          type: integer
+        importance:
+          type: number
+          minimum: 0
+          maximum: 1
+        headline:
+          type: string
+        body:
+          type: string
+        observationIds:
+          type: array
+          items:
+            type: integer
+        delivered:
+          type: boolean
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, importance, headline, body, observationIds, delivered, createdAt]
+
+    EphemeroiReportsResponse:
+      type: object
+      properties:
+        reports:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiReport"
+      required: [reports]
+
+    EphemeroiCycleResult:
+      type: object
+      properties:
+        observationsAdded:
+          type: integer
+        beliefsUpdated:
+          type: integer
+        contradictionsFound:
+          type: integer
+        reportsCreated:
+          type: integer
+        ranAt:
+          type: string
+          format: date-time
+        durationMs:
+          type: integer
+      required: [observationsAdded, beliefsUpdated, contradictionsFound, reportsCreated, ranAt, durationMs]
+
+    EphemeroiState:
+      type: object
+      properties:
+        settings:
+          $ref: "#/components/schemas/EphemeroiSettings"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiSource"
+        recentObservations:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiObservation"
+        beliefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiBelief"
+        contradictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiContradiction"
+        recentReports:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiReport"
+        loop:
+          type: object
+          properties:
+            running:
+              type: boolean
+            lastCycleAt:
+              type: string
+              format: date-time
+              nullable: true
+            nextCycleAt:
+              type: string
+              format: date-time
+              nullable: true
+            lastError:
+              type: string
+              nullable: true
+          required: [running]
+      required: [settings, sources, recentObservations, beliefs, contradictions, recentReports, loop]

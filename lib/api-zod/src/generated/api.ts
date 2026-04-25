@@ -75,3 +75,464 @@ export const GetSampleQueriesResponse = zod.object({
     }),
   ),
 });
+
+/**
+ * One-shot dashboard payload — settings, source counts, recent observations/reports/beliefs/contradictions, and loop status.
+ * @summary Snapshot of the explorer
+ */
+export const getEphemeroiStateResponseSettingsIntervalSecondsMin = 30;
+export const getEphemeroiStateResponseSettingsIntervalSecondsMax = 86400;
+
+export const getEphemeroiStateResponseSettingsImportanceThresholdMin = 0;
+export const getEphemeroiStateResponseSettingsImportanceThresholdMax = 1;
+
+export const getEphemeroiStateResponseSettingsNoveltyWeightMin = 0;
+export const getEphemeroiStateResponseSettingsNoveltyWeightMax = 1;
+
+export const getEphemeroiStateResponseSettingsNoveltyDecayMin = 0;
+export const getEphemeroiStateResponseSettingsNoveltyDecayMax = 1;
+
+export const getEphemeroiStateResponseBeliefsItemConfidenceMin = -1;
+export const getEphemeroiStateResponseBeliefsItemConfidenceMax = 1;
+
+export const getEphemeroiStateResponseRecentReportsItemImportanceMin = 0;
+export const getEphemeroiStateResponseRecentReportsItemImportanceMax = 1;
+
+export const GetEphemeroiStateResponse = zod.object({
+  settings: zod.object({
+    intervalSeconds: zod
+      .number()
+      .min(getEphemeroiStateResponseSettingsIntervalSecondsMin)
+      .max(getEphemeroiStateResponseSettingsIntervalSecondsMax)
+      .describe("How often the explorer cycle runs automatically."),
+    importanceThreshold: zod
+      .number()
+      .min(getEphemeroiStateResponseSettingsImportanceThresholdMin)
+      .max(getEphemeroiStateResponseSettingsImportanceThresholdMax)
+      .describe(
+        "Reflections must score at or above this to be reported (0..1).",
+      ),
+    paused: zod
+      .boolean()
+      .describe("When true, the auto loop pauses (manual cycles still work)."),
+    telegramEnabled: zod
+      .boolean()
+      .describe("Whether reports are forwarded to Telegram."),
+    novelty: zod
+      .object({
+        weight: zod
+          .number()
+          .min(getEphemeroiStateResponseSettingsNoveltyWeightMin)
+          .max(getEphemeroiStateResponseSettingsNoveltyWeightMax),
+        decay: zod
+          .number()
+          .min(getEphemeroiStateResponseSettingsNoveltyDecayMin)
+          .max(getEphemeroiStateResponseSettingsNoveltyDecayMax),
+      })
+      .describe("Tuning for the novelty signal that drives importance."),
+  }),
+  sources: zod.array(
+    zod.object({
+      id: zod.number(),
+      kind: zod
+        .enum(["rss", "url", "search"])
+        .describe(
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.",
+        ),
+      label: zod
+        .string()
+        .describe("Friendly display name (auto-derived if not given)."),
+      target: zod
+        .string()
+        .describe("For rss\/url, the URL. For search, the query string."),
+      active: zod.boolean(),
+      lastPolledAt: zod.coerce.date().nullish(),
+      lastError: zod.string().nullish(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+  recentObservations: zod.array(
+    zod.object({
+      id: zod.number(),
+      sourceId: zod.number().nullish(),
+      sourceKind: zod
+        .enum(["rss", "url", "search"])
+        .describe(
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.",
+        ),
+      sourceLabel: zod.string(),
+      title: zod.string(),
+      snippet: zod.string(),
+      url: zod.string().nullish(),
+      novelty: zod
+        .number()
+        .describe("0..1, where 1 = nothing like this in memory yet."),
+      importance: zod
+        .number()
+        .describe("Reflection's importance score (-1 if not yet reflected)."),
+      observedAt: zod.coerce.date(),
+      reflectedAt: zod.coerce.date().nullish(),
+    }),
+  ),
+  beliefs: zod.array(
+    zod.object({
+      id: zod.number(),
+      proposition: zod.string(),
+      confidence: zod
+        .number()
+        .min(getEphemeroiStateResponseBeliefsItemConfidenceMin)
+        .max(getEphemeroiStateResponseBeliefsItemConfidenceMax)
+        .describe(
+          "-1 = strongly disbelieved, 0 = uncertain, 1 = strongly believed.",
+        ),
+      supportCount: zod.number(),
+      contradictCount: zod.number(),
+      firstSeenAt: zod.coerce.date(),
+      lastUpdatedAt: zod.coerce.date(),
+    }),
+  ),
+  contradictions: zod.array(
+    zod.object({
+      id: zod.number(),
+      beliefId: zod.number().nullish(),
+      beliefProposition: zod.string().nullish(),
+      observationId: zod.number().nullish(),
+      summary: zod
+        .string()
+        .describe("One-sentence description of the conflict."),
+      resolved: zod.boolean(),
+      detectedAt: zod.coerce.date(),
+    }),
+  ),
+  recentReports: zod.array(
+    zod.object({
+      id: zod.number(),
+      importance: zod
+        .number()
+        .min(getEphemeroiStateResponseRecentReportsItemImportanceMin)
+        .max(getEphemeroiStateResponseRecentReportsItemImportanceMax),
+      headline: zod.string(),
+      body: zod.string(),
+      observationIds: zod.array(zod.number()),
+      delivered: zod.boolean(),
+      deliveredAt: zod.coerce.date().nullish(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+  loop: zod.object({
+    running: zod.boolean(),
+    lastCycleAt: zod.coerce.date().nullish(),
+    nextCycleAt: zod.coerce.date().nullish(),
+    lastError: zod.string().nullish(),
+  }),
+});
+
+/**
+ * @summary Get explorer settings
+ */
+export const getEphemeroiSettingsResponseIntervalSecondsMin = 30;
+export const getEphemeroiSettingsResponseIntervalSecondsMax = 86400;
+
+export const getEphemeroiSettingsResponseImportanceThresholdMin = 0;
+export const getEphemeroiSettingsResponseImportanceThresholdMax = 1;
+
+export const getEphemeroiSettingsResponseNoveltyWeightMin = 0;
+export const getEphemeroiSettingsResponseNoveltyWeightMax = 1;
+
+export const getEphemeroiSettingsResponseNoveltyDecayMin = 0;
+export const getEphemeroiSettingsResponseNoveltyDecayMax = 1;
+
+export const GetEphemeroiSettingsResponse = zod.object({
+  intervalSeconds: zod
+    .number()
+    .min(getEphemeroiSettingsResponseIntervalSecondsMin)
+    .max(getEphemeroiSettingsResponseIntervalSecondsMax)
+    .describe("How often the explorer cycle runs automatically."),
+  importanceThreshold: zod
+    .number()
+    .min(getEphemeroiSettingsResponseImportanceThresholdMin)
+    .max(getEphemeroiSettingsResponseImportanceThresholdMax)
+    .describe("Reflections must score at or above this to be reported (0..1)."),
+  paused: zod
+    .boolean()
+    .describe("When true, the auto loop pauses (manual cycles still work)."),
+  telegramEnabled: zod
+    .boolean()
+    .describe("Whether reports are forwarded to Telegram."),
+  novelty: zod
+    .object({
+      weight: zod
+        .number()
+        .min(getEphemeroiSettingsResponseNoveltyWeightMin)
+        .max(getEphemeroiSettingsResponseNoveltyWeightMax),
+      decay: zod
+        .number()
+        .min(getEphemeroiSettingsResponseNoveltyDecayMin)
+        .max(getEphemeroiSettingsResponseNoveltyDecayMax),
+    })
+    .describe("Tuning for the novelty signal that drives importance."),
+});
+
+/**
+ * @summary Update explorer settings
+ */
+export const updateEphemeroiSettingsBodyIntervalSecondsMin = 30;
+export const updateEphemeroiSettingsBodyIntervalSecondsMax = 86400;
+
+export const updateEphemeroiSettingsBodyImportanceThresholdMin = 0;
+export const updateEphemeroiSettingsBodyImportanceThresholdMax = 1;
+
+export const updateEphemeroiSettingsBodyNoveltyWeightMin = 0;
+export const updateEphemeroiSettingsBodyNoveltyWeightMax = 1;
+
+export const updateEphemeroiSettingsBodyNoveltyDecayMin = 0;
+export const updateEphemeroiSettingsBodyNoveltyDecayMax = 1;
+
+export const UpdateEphemeroiSettingsBody = zod
+  .object({
+    intervalSeconds: zod
+      .number()
+      .min(updateEphemeroiSettingsBodyIntervalSecondsMin)
+      .max(updateEphemeroiSettingsBodyIntervalSecondsMax)
+      .optional(),
+    importanceThreshold: zod
+      .number()
+      .min(updateEphemeroiSettingsBodyImportanceThresholdMin)
+      .max(updateEphemeroiSettingsBodyImportanceThresholdMax)
+      .optional(),
+    paused: zod.boolean().optional(),
+    telegramEnabled: zod.boolean().optional(),
+    noveltyWeight: zod
+      .number()
+      .min(updateEphemeroiSettingsBodyNoveltyWeightMin)
+      .max(updateEphemeroiSettingsBodyNoveltyWeightMax)
+      .optional(),
+    noveltyDecay: zod
+      .number()
+      .min(updateEphemeroiSettingsBodyNoveltyDecayMin)
+      .max(updateEphemeroiSettingsBodyNoveltyDecayMax)
+      .optional(),
+  })
+  .describe("Partial update of explorer settings.");
+
+export const updateEphemeroiSettingsResponseIntervalSecondsMin = 30;
+export const updateEphemeroiSettingsResponseIntervalSecondsMax = 86400;
+
+export const updateEphemeroiSettingsResponseImportanceThresholdMin = 0;
+export const updateEphemeroiSettingsResponseImportanceThresholdMax = 1;
+
+export const updateEphemeroiSettingsResponseNoveltyWeightMin = 0;
+export const updateEphemeroiSettingsResponseNoveltyWeightMax = 1;
+
+export const updateEphemeroiSettingsResponseNoveltyDecayMin = 0;
+export const updateEphemeroiSettingsResponseNoveltyDecayMax = 1;
+
+export const UpdateEphemeroiSettingsResponse = zod.object({
+  intervalSeconds: zod
+    .number()
+    .min(updateEphemeroiSettingsResponseIntervalSecondsMin)
+    .max(updateEphemeroiSettingsResponseIntervalSecondsMax)
+    .describe("How often the explorer cycle runs automatically."),
+  importanceThreshold: zod
+    .number()
+    .min(updateEphemeroiSettingsResponseImportanceThresholdMin)
+    .max(updateEphemeroiSettingsResponseImportanceThresholdMax)
+    .describe("Reflections must score at or above this to be reported (0..1)."),
+  paused: zod
+    .boolean()
+    .describe("When true, the auto loop pauses (manual cycles still work)."),
+  telegramEnabled: zod
+    .boolean()
+    .describe("Whether reports are forwarded to Telegram."),
+  novelty: zod
+    .object({
+      weight: zod
+        .number()
+        .min(updateEphemeroiSettingsResponseNoveltyWeightMin)
+        .max(updateEphemeroiSettingsResponseNoveltyWeightMax),
+      decay: zod
+        .number()
+        .min(updateEphemeroiSettingsResponseNoveltyDecayMin)
+        .max(updateEphemeroiSettingsResponseNoveltyDecayMax),
+    })
+    .describe("Tuning for the novelty signal that drives importance."),
+});
+
+/**
+ * @summary List configured sources (feeds, urls, search topics)
+ */
+export const ListEphemeroiSourcesResponse = zod.object({
+  sources: zod.array(
+    zod.object({
+      id: zod.number(),
+      kind: zod
+        .enum(["rss", "url", "search"])
+        .describe(
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.",
+        ),
+      label: zod
+        .string()
+        .describe("Friendly display name (auto-derived if not given)."),
+      target: zod
+        .string()
+        .describe("For rss\/url, the URL. For search, the query string."),
+      active: zod.boolean(),
+      lastPolledAt: zod.coerce.date().nullish(),
+      lastError: zod.string().nullish(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary Add a new source
+ */
+export const CreateEphemeroiSourceBody = zod.object({
+  kind: zod
+    .enum(["rss", "url", "search"])
+    .describe(
+      "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.",
+    ),
+  target: zod.string(),
+  label: zod.string().optional(),
+});
+
+/**
+ * @summary Remove a source
+ */
+export const DeleteEphemeroiSourceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary List recent observations
+ */
+export const listEphemeroiObservationsQueryLimitDefault = 50;
+export const listEphemeroiObservationsQueryLimitMax = 500;
+
+export const ListEphemeroiObservationsQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listEphemeroiObservationsQueryLimitMax)
+    .default(listEphemeroiObservationsQueryLimitDefault),
+});
+
+export const ListEphemeroiObservationsResponse = zod.object({
+  observations: zod.array(
+    zod.object({
+      id: zod.number(),
+      sourceId: zod.number().nullish(),
+      sourceKind: zod
+        .enum(["rss", "url", "search"])
+        .describe(
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.",
+        ),
+      sourceLabel: zod.string(),
+      title: zod.string(),
+      snippet: zod.string(),
+      url: zod.string().nullish(),
+      novelty: zod
+        .number()
+        .describe("0..1, where 1 = nothing like this in memory yet."),
+      importance: zod
+        .number()
+        .describe("Reflection's importance score (-1 if not yet reflected)."),
+      observedAt: zod.coerce.date(),
+      reflectedAt: zod.coerce.date().nullish(),
+    }),
+  ),
+});
+
+/**
+ * @summary List current beliefs
+ */
+export const listEphemeroiBeliefsResponseBeliefsItemConfidenceMin = -1;
+export const listEphemeroiBeliefsResponseBeliefsItemConfidenceMax = 1;
+
+export const ListEphemeroiBeliefsResponse = zod.object({
+  beliefs: zod.array(
+    zod.object({
+      id: zod.number(),
+      proposition: zod.string(),
+      confidence: zod
+        .number()
+        .min(listEphemeroiBeliefsResponseBeliefsItemConfidenceMin)
+        .max(listEphemeroiBeliefsResponseBeliefsItemConfidenceMax)
+        .describe(
+          "-1 = strongly disbelieved, 0 = uncertain, 1 = strongly believed.",
+        ),
+      supportCount: zod.number(),
+      contradictCount: zod.number(),
+      firstSeenAt: zod.coerce.date(),
+      lastUpdatedAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary List unresolved contradictions
+ */
+export const ListEphemeroiContradictionsResponse = zod.object({
+  contradictions: zod.array(
+    zod.object({
+      id: zod.number(),
+      beliefId: zod.number().nullish(),
+      beliefProposition: zod.string().nullish(),
+      observationId: zod.number().nullish(),
+      summary: zod
+        .string()
+        .describe("One-sentence description of the conflict."),
+      resolved: zod.boolean(),
+      detectedAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * @summary List recent reports (only those past the importance threshold)
+ */
+export const listEphemeroiReportsQueryLimitDefault = 50;
+export const listEphemeroiReportsQueryLimitMax = 500;
+
+export const ListEphemeroiReportsQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listEphemeroiReportsQueryLimitMax)
+    .default(listEphemeroiReportsQueryLimitDefault),
+});
+
+export const listEphemeroiReportsResponseReportsItemImportanceMin = 0;
+export const listEphemeroiReportsResponseReportsItemImportanceMax = 1;
+
+export const ListEphemeroiReportsResponse = zod.object({
+  reports: zod.array(
+    zod.object({
+      id: zod.number(),
+      importance: zod
+        .number()
+        .min(listEphemeroiReportsResponseReportsItemImportanceMin)
+        .max(listEphemeroiReportsResponseReportsItemImportanceMax),
+      headline: zod.string(),
+      body: zod.string(),
+      observationIds: zod.array(zod.number()),
+      delivered: zod.boolean(),
+      deliveredAt: zod.coerce.date().nullish(),
+      createdAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * Forces an immediate fetch + reflect + report cycle outside the normal schedule.
+ * @summary Trigger one explorer cycle right now
+ */
+export const RunEphemeroiCycleResponse = zod.object({
+  observationsAdded: zod.number(),
+  beliefsUpdated: zod.number(),
+  contradictionsFound: zod.number(),
+  reportsCreated: zod.number(),
+  ranAt: zod.coerce.date(),
+  durationMs: zod.number(),
+});
