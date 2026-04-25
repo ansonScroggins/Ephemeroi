@@ -346,6 +346,7 @@ router.post("/ephemeroi/cycle/run", async (_req, res) => {
         beliefsUpdated: result.beliefsUpdated,
         contradictionsFound: result.contradictionsFound,
         reportsCreated: result.reportsCreated,
+        autoSourcesAdded: result.autoSourcesAdded,
         ranAt: result.ranAt.toISOString(),
         durationMs: result.durationMs,
       }),

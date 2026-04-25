@@ -32,4 +32,12 @@ export interface EphemeroiSettingsUpdate {
    * @maximum 1
    */
   noveltyDecay?: number;
+  /** Toggle Ephemeroi's self-discovery of new GitHub sources. */
+  autonomyEnabled?: boolean;
+  /**
+   * Hard cap on the total number of auto-added sources.
+   * @minimum 0
+   * @maximum 1000
+   */
+  autonomyMaxSources?: number;
 }

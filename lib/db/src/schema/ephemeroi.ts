@@ -21,6 +21,11 @@ export const ephemeroiSettingsTable = pgTable("ephemeroi_settings", {
   telegramEnabled: boolean("telegram_enabled").notNull().default(true),
   noveltyWeight: doublePrecision("novelty_weight").notNull().default(0.5),
   noveltyDecay: doublePrecision("novelty_decay").notNull().default(0.1),
+  // Autonomy: when enabled, after each cycle's reflection step the bot
+  // scans observations for GitHub references and may add a new source on
+  // its own. Off by default; capped on both per-cycle and total auto-added.
+  autonomyEnabled: boolean("autonomy_enabled").notNull().default(false),
+  autonomyMaxSources: integer("autonomy_max_sources").notNull().default(50),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),
@@ -40,6 +45,12 @@ export const ephemeroiSourcesTable = pgTable(
     lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
     lastError: text("last_error"),
     cursor: jsonb("cursor").$type<Record<string, unknown>>(),
+    // True when the source was added autonomously by Ephemeroi during a
+    // cycle's discovery pass (vs. added explicitly by the user). The reason
+    // is a short LLM-supplied justification we surface in the UI.
+    autoAdded: boolean("auto_added").notNull().default(false),
+    autoAddedReason: text("auto_added_reason"),
+    autoAddedAt: timestamp("auto_added_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

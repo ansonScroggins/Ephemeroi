@@ -93,12 +93,12 @@ Always-on background observer that watches the world (RSS feeds, URLs, search to
 - Importance is **blended** in the loop: `effective = importance × (1 − noveltyWeight) + novelty × noveltyWeight`, clamped 0..1. Novelty itself is `1 − maxCosine(observation, last 200 embedded observations)`; embeddings come from `routes/society/embeddings.ts` (text-embedding-3-small, 1536-d). Observations later in the same batch are added to the running reference set so they don't all look novel against the same baseline.
 - `store.ts` — Drizzle queries. `getSettings()` is race-safe singleton bootstrap (insert default, then re-select asc-id-limit-1; concurrent first callers converge). `upsertBelief` matches by exact proposition string and adjusts confidence by `deltaConfidence` (clamped −1..1).
 - `telegram.ts` — POSTs to Bot API with markdown-escaped headline+body. Failures are logged and swallowed so the cycle never crashes on Telegram errors; `delivered`/`deliveredAt` only flip when send succeeds. Gracefully no-ops if `TELEGRAM_BOT_TOKEN`/`TELEGRAM_CHAT_ID` are missing.
-- `bus.ts` + `/api/ephemeroi/stream` (SSE) — emits `{type, payload}` envelopes on the **default `message` channel** (so `EventSource.onmessage` in the browser picks it up without per-type listeners). Cleanup is bound to `res.on("close")`/`res.on("error")` with an idempotent guard. 25s `: ping` heartbeat. Event types: `hello | observation | belief | contradiction | report | cycle`.
+- `bus.ts` + `/api/ephemeroi/stream` (SSE) — emits `{type, payload}` envelopes on the **default `message` channel** (so `EventSource.onmessage` in the browser picks it up without per-type listeners). Cleanup is bound to `res.on("close")`/`res.on("error")` with an idempotent guard. 25s `: ping` heartbeat. Event types: `hello | observation | belief | contradiction | report | cycle | source_auto_added`.
 - `index.ts` wires all routes plus `ephemeroiLoop.start()` on first import.
 
 ### DB schema (`lib/db/src/schema/ephemeroi.ts`)
-- `ephemeroi_settings` (singleton; defaults: 300s interval, 0.55 threshold, paused=false, telegramEnabled=true, noveltyWeight=0.5)
-- `ephemeroi_sources` (kind: rss|url|search|github|github_user, unique on (kind, target), `cursor` jsonb for per-source poll bookmarks; `github_user` cursor stores `{repos: {"owner/repo": {lastCommitSha,lastReleaseId,lastIssueUpdatedAt}, ...}, lastUserSync}` for per-repo bookmarks within a single user/org watch)
+- `ephemeroi_settings` (singleton; defaults: 300s interval, 0.55 threshold, paused=false, telegramEnabled=true, noveltyWeight=0.5, autonomyEnabled=false, autonomyMaxSources=50)
+- `ephemeroi_sources` (kind: rss|url|search|github|github_user, unique on (kind, target), `cursor` jsonb for per-source poll bookmarks; `github_user` cursor stores `{repos: {"owner/repo": {lastCommitSha,lastReleaseId,lastIssueUpdatedAt}, ...}, lastUserSync}` for per-repo bookmarks within a single user/org watch; `autoAdded`/`autoAddedReason`/`autoAddedAt` for sources Ephemeroi added to itself via the Autonomy pass)
 - `ephemeroi_observations` (jsonb embedding `number[]`, doublePrecision novelty/importance, unique on `url_hash`, indexes on `observed_at` and `reflected`)
 - `ephemeroi_beliefs` (proposition, confidence −1..1, supportCount, contradictCount, embedding, `originSourceId` nullable FK-less integer for source-of-origin tracking; populated on insert and backfilled on update if previously null)
 - `ephemeroi_contradictions` (beliefId nullable, observationId nullable, summary, resolved)
@@ -125,6 +125,18 @@ GitHub repos are first-class observation sources alongside RSS/URL/search.
 - **Whole-user ingestion** (`kind=github_user`): `ingestGithubUser(source)` lists owned repos via `/users/<user>/repos?type=owner&sort=pushed`, filters to public + non-fork + non-archived + non-disabled, takes the top MAX_REPOS_PER_USER=30 by recent push, then runs `ingestSingleRepo` against each. Per-repo cursors live inside `cursor.repos["owner/repo"]` so adding a new repo mid-life starts at "now". Per-repo errors are logged and skipped (one bad repo doesn't kill the cycle); the source is only marked errored if EVERY candidate repo failed.
 - **Public-only v1**: we only read; no writes back to GitHub (no comments/issues/PRs). Private-repo support is a follow-up gated on an explicit settings toggle.
 - **UI**: `artifacts/ephemeroi/src/pages/sources.tsx` adds "GitHub Repo" and "GitHub User / Org" select options. Repo form validates `owner/repo` or `https://github.com/owner/repo`; user form validates a bare username/org or `https://github.com/<user>` URL. Github + Users icons from lucide-react. Backend re-validates and canonicalizes before insert (case-insensitive dedup).
+
+### Autonomy — Ephemeroi adds its own GitHub sources
+Off by default. When `settings.autonomyEnabled` is true, after each cycle's reflection step the bot scans the just-reflected observations for GitHub references and may add up to **2 new sources per cycle**, subject to a total ceiling (`settings.autonomyMaxSources`, default 50).
+- `routes/ephemeroi/discover.ts` — three-layer false-positive defense:
+  1. Lexical extraction with strict `owner/repo` and `github.com/<user>` regexes; URL form is unconditionally accepted, bare `owner/repo` form requires the literal word "github" within ±120 chars (kills prose like "days/weeks", "pros/cons").
+  2. `FALSE_POSITIVE_OWNERS` deny-list (English words, time units, URL/path tokens). `RESERVED_USERS` deny-list for github.com routes (about, login, marketplace, …).
+  3. LLM judge (gpt-4o-mini, JSON-only) given current top beliefs + candidates with explicit reject criteria; max 2 picks per cycle.
+- `trimRepoSuffix` strips trailing `.git` and prose punctuation greedily eaten by the repo regex (so refs at sentence boundaries still match).
+- Discovery only runs when `unreflected.length > 0` (each ref is evaluated exactly once when first seen). Failures are caught + logged; never break the cycle.
+- `createSource({autoAdded:true, autoAddedReason})` is idempotent via `onConflictDoNothing`. SSE event `source_auto_added` fires per added source so the UI can toast + refresh the sources list.
+- Audit trail: `ephemeroi_sources.{auto_added, auto_added_reason, auto_added_at}` columns; UI shows a "Auto-watched" badge with the reason quoted underneath.
+- Settings UI exposes a toggle + max-sources slider. Cycle response (`runEphemeroiCycle`) returns `autoSourcesAdded` count.
 
 ### Bridge endpoint — `GET /api/ephemeroi/beliefs/by-source`
 Lets Metacog ask "what does Ephemeroi currently believe about this watched source?".

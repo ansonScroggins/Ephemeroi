@@ -17,5 +17,10 @@ export interface EphemeroiSource {
   active: boolean;
   lastPolledAt?: Date | null;
   lastError?: string | null;
+  /** True when Ephemeroi added this source itself during a discovery pass. */
+  autoAdded: boolean;
+  /** Short LLM-supplied justification for the auto-add. */
+  autoAddedReason?: string | null;
+  autoAddedAt?: Date | null;
   createdAt: Date;
 }

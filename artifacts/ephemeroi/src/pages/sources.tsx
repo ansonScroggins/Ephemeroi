@@ -7,7 +7,7 @@ import {
 } from "@workspace/api-client-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { Radio, Search, Link as LinkIcon, Trash2, Plus, AlertCircle, RefreshCw, Github, Users } from "lucide-react";
+import { Radio, Search, Link as LinkIcon, Trash2, Plus, AlertCircle, RefreshCw, Github, Users, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -215,15 +215,32 @@ export default function Sources() {
                         {getIcon(source.kind)}
                       </div>
                       <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-1">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
                           <h4 className="font-medium text-foreground truncate">{source.label}</h4>
                           <Badge variant={source.active ? "outline" : "secondary"} className="text-[10px] h-5 uppercase tracking-wider">
                             {source.kind}
                           </Badge>
+                          {source.autoAdded && (
+                            <Badge
+                              variant="outline"
+                              className="text-[10px] h-5 uppercase tracking-wider border-primary/40 text-primary bg-primary/10 flex items-center gap-1"
+                              title={source.autoAddedReason ?? "Added autonomously by Ephemeroi"}
+                            >
+                              <Sparkles className="w-3 h-3" /> Auto-watched
+                            </Badge>
+                          )}
                         </div>
                         <p className="text-sm text-muted-foreground truncate" title={source.target}>
                           {source.target}
                         </p>
+                        {source.autoAdded && source.autoAddedReason && (
+                          <p
+                            className="text-xs text-muted-foreground/80 italic mt-1 line-clamp-2"
+                            title={source.autoAddedReason}
+                          >
+                            “{source.autoAddedReason}”
+                          </p>
+                        )}
                       </div>
                     </div>
                     

@@ -309,6 +309,22 @@ export type EphemeroiSettingsNovelty = {
   decay: number;
 };
 
+/**
+ * When enabled, after each cycle's reflection step the bot scans
+recent observations for GitHub references and may add up to two
+new sources on its own (subject to the maxSources hard cap).
+
+ */
+export type EphemeroiSettingsAutonomy = {
+  enabled: boolean;
+  /**
+   * Hard cap on the total number of auto-added sources.
+   * @minimum 0
+   * @maximum 1000
+   */
+  maxSources: number;
+};
+
 export interface EphemeroiSettings {
   /**
    * How often the explorer cycle runs automatically.
@@ -328,6 +344,11 @@ export interface EphemeroiSettings {
   telegramEnabled: boolean;
   /** Tuning for the novelty signal that drives importance. */
   novelty: EphemeroiSettingsNovelty;
+  /** When enabled, after each cycle's reflection step the bot scans
+recent observations for GitHub references and may add up to two
+new sources on its own (subject to the maxSources hard cap).
+ */
+  autonomy: EphemeroiSettingsAutonomy;
 }
 
 /**
@@ -356,6 +377,14 @@ export interface EphemeroiSettingsUpdate {
    * @maximum 1
    */
   noveltyDecay?: number;
+  /** Toggle Ephemeroi's self-discovery of new GitHub sources. */
+  autonomyEnabled?: boolean;
+  /**
+   * Hard cap on the total number of auto-added sources.
+   * @minimum 0
+   * @maximum 1000
+   */
+  autonomyMaxSources?: number;
 }
 
 /**
@@ -382,6 +411,11 @@ export interface EphemeroiSource {
   active: boolean;
   lastPolledAt?: string | null;
   lastError?: string | null;
+  /** True when Ephemeroi added this source itself during a discovery pass. */
+  autoAdded: boolean;
+  /** Short LLM-supplied justification for the auto-add. */
+  autoAddedReason?: string | null;
+  autoAddedAt?: string | null;
   createdAt: string;
 }
 
@@ -488,6 +522,8 @@ export interface EphemeroiCycleResult {
   beliefsUpdated: number;
   contradictionsFound: number;
   reportsCreated: number;
+  /** How many sources Ephemeroi added to itself this cycle (autonomy). */
+  autoSourcesAdded: number;
   ranAt: string;
   durationMs: number;
 }

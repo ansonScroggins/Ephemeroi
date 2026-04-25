@@ -5,7 +5,8 @@ export type EphemeroiEventType =
   | "report"
   | "belief"
   | "contradiction"
-  | "cycle";
+  | "cycle"
+  | "source_auto_added";
 
 export interface EphemeroiEvent {
   type: EphemeroiEventType;

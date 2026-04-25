@@ -6,7 +6,7 @@ import {
   getGetEphemeroiSettingsQueryKey
 } from "@workspace/api-client-react";
 import { motion } from "framer-motion";
-import { Save, Play, Settings2, Bell, Brain, Clock, Zap } from "lucide-react";
+import { Save, Play, Settings2, Bell, Brain, Clock, Zap, Sparkles } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -30,7 +30,9 @@ export default function Settings() {
     paused: false,
     telegramEnabled: false,
     noveltyWeight: 0.5,
-    noveltyDecay: 0.1
+    noveltyDecay: 0.1,
+    autonomyEnabled: false,
+    autonomyMaxSources: 50,
   });
 
   useEffect(() => {
@@ -41,7 +43,9 @@ export default function Settings() {
         paused: settings.paused,
         telegramEnabled: settings.telegramEnabled,
         noveltyWeight: settings.novelty.weight,
-        noveltyDecay: settings.novelty.decay
+        noveltyDecay: settings.novelty.decay,
+        autonomyEnabled: settings.autonomy.enabled,
+        autonomyMaxSources: settings.autonomy.maxSources,
       });
     }
   }, [settings]);
@@ -197,6 +201,53 @@ export default function Settings() {
                   min={0} max={1} step={0.01}
                   value={[local.noveltyDecay]}
                   onValueChange={v => setLocal({...local, noveltyDecay: v[0]})}
+                />
+              </div>
+
+            </CardContent>
+          </Card>
+        </motion.div>
+
+        <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}>
+          <Card className="bg-card/50 border-border/50">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Sparkles className="w-5 h-5 text-primary" /> Autonomy
+              </CardTitle>
+              <CardDescription>
+                Let Ephemeroi follow new GitHub repos and users on its own when it
+                spots them in observations. Off by default. Hard cap: at most two
+                new sources per cycle, and a total ceiling you can set below.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+
+              <div className="flex items-center justify-between">
+                <div className="space-y-0.5">
+                  <label className="text-sm font-medium">Enable Self-Discovery</label>
+                  <p className="text-xs text-muted-foreground">
+                    After each cycle's reflection, scan observations for GitHub references and ask the LLM if any are worth watching.
+                  </p>
+                </div>
+                <Switch
+                  checked={local.autonomyEnabled}
+                  onCheckedChange={v => setLocal({ ...local, autonomyEnabled: v })}
+                />
+              </div>
+
+              <div className="space-y-4">
+                <div className="flex justify-between">
+                  <label className="text-sm font-medium">Max Auto-Added Sources</label>
+                  <span className="text-xs font-mono text-muted-foreground">{local.autonomyMaxSources}</span>
+                </div>
+                <p className="text-xs text-muted-foreground -mt-2">
+                  Total ceiling on sources Ephemeroi has added to itself. Once reached, it stops adding.
+                </p>
+                <Slider
+                  min={0} max={200} step={5}
+                  value={[local.autonomyMaxSources]}
+                  onValueChange={v => setLocal({ ...local, autonomyMaxSources: v[0] })}
+                  disabled={!local.autonomyEnabled}
                 />
               </div>
 

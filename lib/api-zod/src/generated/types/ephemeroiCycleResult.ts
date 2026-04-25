@@ -11,6 +11,8 @@ export interface EphemeroiCycleResult {
   beliefsUpdated: number;
   contradictionsFound: number;
   reportsCreated: number;
+  /** How many sources Ephemeroi added to itself this cycle (autonomy). */
+  autoSourcesAdded: number;
   ranAt: Date;
   durationMs: number;
 }

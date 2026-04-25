@@ -665,7 +665,22 @@ components:
               minimum: 0
               maximum: 1
           required: [weight, decay]
-      required: [intervalSeconds, importanceThreshold, paused, telegramEnabled, novelty]
+        autonomy:
+          type: object
+          description: |
+            When enabled, after each cycle's reflection step the bot scans
+            recent observations for GitHub references and may add up to two
+            new sources on its own (subject to the maxSources hard cap).
+          properties:
+            enabled:
+              type: boolean
+            maxSources:
+              type: integer
+              minimum: 0
+              maximum: 1000
+              description: Hard cap on the total number of auto-added sources.
+          required: [enabled, maxSources]
+      required: [intervalSeconds, importanceThreshold, paused, telegramEnabled, novelty, autonomy]
 
     EphemeroiSettingsUpdate:
       type: object
@@ -691,6 +706,14 @@ components:
           type: number
           minimum: 0
           maximum: 1
+        autonomyEnabled:
+          type: boolean
+          description: Toggle Ephemeroi's self-discovery of new GitHub sources.
+        autonomyMaxSources:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          description: Hard cap on the total number of auto-added sources.
 
     EphemeroiSourceKind:
       type: string
@@ -719,10 +742,21 @@ components:
         lastError:
           type: string
           nullable: true
+        autoAdded:
+          type: boolean
+          description: True when Ephemeroi added this source itself during a discovery pass.
+        autoAddedReason:
+          type: string
+          nullable: true
+          description: Short LLM-supplied justification for the auto-add.
+        autoAddedAt:
+          type: string
+          format: date-time
+          nullable: true
         createdAt:
           type: string
           format: date-time
-      required: [id, kind, label, target, active, createdAt]
+      required: [id, kind, label, target, active, autoAdded, createdAt]
 
     EphemeroiSourceCreate:
       type: object
@@ -930,12 +964,15 @@ components:
           type: integer
         reportsCreated:
           type: integer
+        autoSourcesAdded:
+          type: integer
+          description: How many sources Ephemeroi added to itself this cycle (autonomy).
         ranAt:
           type: string
           format: date-time
         durationMs:
           type: integer
-      required: [observationsAdded, beliefsUpdated, contradictionsFound, reportsCreated, ranAt, durationMs]
+      required: [observationsAdded, beliefsUpdated, contradictionsFound, reportsCreated, autoSourcesAdded, ranAt, durationMs]
 
     EphemeroiState:
       type: object

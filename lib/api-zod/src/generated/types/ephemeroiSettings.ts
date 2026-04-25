@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EphemeroiSettingsAutonomy } from "./ephemeroiSettingsAutonomy";
 import type { EphemeroiSettingsNovelty } from "./ephemeroiSettingsNovelty";
 
 export interface EphemeroiSettings {
@@ -26,4 +27,9 @@ export interface EphemeroiSettings {
   telegramEnabled: boolean;
   /** Tuning for the novelty signal that drives importance. */
   novelty: EphemeroiSettingsNovelty;
+  /** When enabled, after each cycle's reflection step the bot scans
+recent observations for GitHub references and may add up to two
+new sources on its own (subject to the maxSources hard cap).
+ */
+  autonomy: EphemeroiSettingsAutonomy;
 }

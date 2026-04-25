@@ -113,6 +113,9 @@ export interface SourceWire {
   active: boolean;
   lastPolledAt: string | null;
   lastError: string | null;
+  autoAdded: boolean;
+  autoAddedReason: string | null;
+  autoAddedAt: string | null;
   createdAt: string;
 }
 
@@ -125,6 +128,9 @@ export function sourceToWire(s: SourceRow): SourceWire {
     active: s.active,
     lastPolledAt: s.lastPolledAt ? s.lastPolledAt.toISOString() : null,
     lastError: s.lastError,
+    autoAdded: s.autoAdded,
+    autoAddedReason: s.autoAddedReason,
+    autoAddedAt: s.autoAddedAt ? s.autoAddedAt.toISOString() : null,
     createdAt: s.createdAt.toISOString(),
   };
 }
@@ -135,6 +141,7 @@ export interface SettingsWire {
   paused: boolean;
   telegramEnabled: boolean;
   novelty: { weight: number; decay: number };
+  autonomy: { enabled: boolean; maxSources: number };
 }
 
 export function settingsToWire(s: SettingsRow): SettingsWire {
@@ -144,5 +151,6 @@ export function settingsToWire(s: SettingsRow): SettingsWire {
     paused: s.paused,
     telegramEnabled: s.telegramEnabled,
     novelty: { weight: s.noveltyWeight, decay: s.noveltyDecay },
+    autonomy: { enabled: s.autonomyEnabled, maxSources: s.autonomyMaxSources },
   };
 }

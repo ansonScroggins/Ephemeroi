@@ -7,7 +7,7 @@ import {
   ephemeroiContradictionsTable,
   ephemeroiReportsTable,
 } from "@workspace/db";
-import { eq, desc, asc, and } from "drizzle-orm";
+import { eq, desc, asc, and, sql } from "drizzle-orm";
 
 // ===== Settings (singleton) =====
 
@@ -19,6 +19,8 @@ export interface SettingsRow {
   telegramEnabled: boolean;
   noveltyWeight: number;
   noveltyDecay: number;
+  autonomyEnabled: boolean;
+  autonomyMaxSources: number;
 }
 
 export async function getSettings(): Promise<SettingsRow> {
@@ -37,6 +39,8 @@ export async function getSettings(): Promise<SettingsRow> {
       telegramEnabled: row.telegramEnabled,
       noveltyWeight: row.noveltyWeight,
       noveltyDecay: row.noveltyDecay,
+      autonomyEnabled: row.autonomyEnabled,
+      autonomyMaxSources: row.autonomyMaxSources,
     };
   }
   // Race-safe singleton bootstrap: insert a default row, then re-read the
@@ -62,6 +66,8 @@ export async function getSettings(): Promise<SettingsRow> {
     telegramEnabled: row.telegramEnabled,
     noveltyWeight: row.noveltyWeight,
     noveltyDecay: row.noveltyDecay,
+    autonomyEnabled: row.autonomyEnabled,
+    autonomyMaxSources: row.autonomyMaxSources,
   };
 }
 
@@ -73,6 +79,8 @@ export async function updateSettings(
     telegramEnabled: boolean;
     noveltyWeight: number;
     noveltyDecay: number;
+    autonomyEnabled: boolean;
+    autonomyMaxSources: number;
   }>,
 ): Promise<SettingsRow> {
   const current = await getSettings();
@@ -88,6 +96,10 @@ export async function updateSettings(
     next["noveltyWeight"] = patch.noveltyWeight;
   if (patch.noveltyDecay !== undefined)
     next["noveltyDecay"] = patch.noveltyDecay;
+  if (patch.autonomyEnabled !== undefined)
+    next["autonomyEnabled"] = patch.autonomyEnabled;
+  if (patch.autonomyMaxSources !== undefined)
+    next["autonomyMaxSources"] = patch.autonomyMaxSources;
   await db
     .update(ephemeroiSettingsTable)
     .set(next)
@@ -107,6 +119,9 @@ export interface SourceRow {
   active: boolean;
   lastPolledAt: Date | null;
   lastError: string | null;
+  autoAdded: boolean;
+  autoAddedReason: string | null;
+  autoAddedAt: Date | null;
   createdAt: Date;
 }
 
@@ -119,6 +134,9 @@ function rowToSource(r: typeof ephemeroiSourcesTable.$inferSelect): SourceRow {
     active: r.active,
     lastPolledAt: r.lastPolledAt,
     lastError: r.lastError,
+    autoAdded: r.autoAdded,
+    autoAddedReason: r.autoAddedReason,
+    autoAddedAt: r.autoAddedAt,
     createdAt: r.createdAt,
   };
 }
@@ -135,8 +153,11 @@ export async function createSource(input: {
   kind: SourceKind;
   target: string;
   label?: string;
+  autoAdded?: boolean;
+  autoAddedReason?: string | null;
 }): Promise<SourceRow> {
   const label = input.label?.trim() || deriveLabel(input.kind, input.target);
+  const auto = input.autoAdded === true;
   const inserted = await db
     .insert(ephemeroiSourcesTable)
     .values({
@@ -144,6 +165,9 @@ export async function createSource(input: {
       target: input.target,
       label,
       active: true,
+      autoAdded: auto,
+      autoAddedReason: auto ? (input.autoAddedReason ?? null) : null,
+      autoAddedAt: auto ? new Date() : null,
     })
     .onConflictDoNothing()
     .returning();
@@ -200,6 +224,18 @@ export async function updateSourceCursor(
     .update(ephemeroiSourcesTable)
     .set({ cursor })
     .where(eq(ephemeroiSourcesTable.id, id));
+}
+
+/**
+ * How many sources Ephemeroi has added to itself so far. Used by the
+ * discovery pass to enforce the user-configured hard cap.
+ */
+export async function countAutoAddedSources(): Promise<number> {
+  const rows = await db
+    .select({ n: sql<number>`count(*)::int` })
+    .from(ephemeroiSourcesTable)
+    .where(eq(ephemeroiSourcesTable.autoAdded, true));
+  return rows[0]?.n ?? 0;
 }
 
 function deriveLabel(kind: SourceKind, target: string): string {

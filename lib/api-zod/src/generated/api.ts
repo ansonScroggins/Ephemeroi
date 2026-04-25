@@ -92,6 +92,9 @@ export const getEphemeroiStateResponseSettingsNoveltyWeightMax = 1;
 export const getEphemeroiStateResponseSettingsNoveltyDecayMin = 0;
 export const getEphemeroiStateResponseSettingsNoveltyDecayMax = 1;
 
+export const getEphemeroiStateResponseSettingsAutonomyMaxSourcesMin = 0;
+export const getEphemeroiStateResponseSettingsAutonomyMaxSourcesMax = 1000;
+
 export const getEphemeroiStateResponseBeliefsItemConfidenceMin = -1;
 export const getEphemeroiStateResponseBeliefsItemConfidenceMax = 1;
 
@@ -130,6 +133,18 @@ export const GetEphemeroiStateResponse = zod.object({
           .max(getEphemeroiStateResponseSettingsNoveltyDecayMax),
       })
       .describe("Tuning for the novelty signal that drives importance."),
+    autonomy: zod
+      .object({
+        enabled: zod.boolean(),
+        maxSources: zod
+          .number()
+          .min(getEphemeroiStateResponseSettingsAutonomyMaxSourcesMin)
+          .max(getEphemeroiStateResponseSettingsAutonomyMaxSourcesMax)
+          .describe("Hard cap on the total number of auto-added sources."),
+      })
+      .describe(
+        "When enabled, after each cycle's reflection step the bot scans\nrecent observations for GitHub references and may add up to two\nnew sources on its own (subject to the maxSources hard cap).\n",
+      ),
   }),
   sources: zod.array(
     zod.object({
@@ -150,6 +165,16 @@ export const GetEphemeroiStateResponse = zod.object({
       active: zod.boolean(),
       lastPolledAt: zod.coerce.date().nullish(),
       lastError: zod.string().nullish(),
+      autoAdded: zod
+        .boolean()
+        .describe(
+          "True when Ephemeroi added this source itself during a discovery pass.",
+        ),
+      autoAddedReason: zod
+        .string()
+        .nullish()
+        .describe("Short LLM-supplied justification for the auto-add."),
+      autoAddedAt: zod.coerce.date().nullish(),
       createdAt: zod.coerce.date(),
     }),
   ),
@@ -244,6 +269,9 @@ export const getEphemeroiSettingsResponseNoveltyWeightMax = 1;
 export const getEphemeroiSettingsResponseNoveltyDecayMin = 0;
 export const getEphemeroiSettingsResponseNoveltyDecayMax = 1;
 
+export const getEphemeroiSettingsResponseAutonomyMaxSourcesMin = 0;
+export const getEphemeroiSettingsResponseAutonomyMaxSourcesMax = 1000;
+
 export const GetEphemeroiSettingsResponse = zod.object({
   intervalSeconds: zod
     .number()
@@ -273,6 +301,18 @@ export const GetEphemeroiSettingsResponse = zod.object({
         .max(getEphemeroiSettingsResponseNoveltyDecayMax),
     })
     .describe("Tuning for the novelty signal that drives importance."),
+  autonomy: zod
+    .object({
+      enabled: zod.boolean(),
+      maxSources: zod
+        .number()
+        .min(getEphemeroiSettingsResponseAutonomyMaxSourcesMin)
+        .max(getEphemeroiSettingsResponseAutonomyMaxSourcesMax)
+        .describe("Hard cap on the total number of auto-added sources."),
+    })
+    .describe(
+      "When enabled, after each cycle's reflection step the bot scans\nrecent observations for GitHub references and may add up to two\nnew sources on its own (subject to the maxSources hard cap).\n",
+    ),
 });
 
 /**
@@ -289,6 +329,9 @@ export const updateEphemeroiSettingsBodyNoveltyWeightMax = 1;
 
 export const updateEphemeroiSettingsBodyNoveltyDecayMin = 0;
 export const updateEphemeroiSettingsBodyNoveltyDecayMax = 1;
+
+export const updateEphemeroiSettingsBodyAutonomyMaxSourcesMin = 0;
+export const updateEphemeroiSettingsBodyAutonomyMaxSourcesMax = 1000;
 
 export const UpdateEphemeroiSettingsBody = zod
   .object({
@@ -314,6 +357,16 @@ export const UpdateEphemeroiSettingsBody = zod
       .min(updateEphemeroiSettingsBodyNoveltyDecayMin)
       .max(updateEphemeroiSettingsBodyNoveltyDecayMax)
       .optional(),
+    autonomyEnabled: zod
+      .boolean()
+      .optional()
+      .describe("Toggle Ephemeroi's self-discovery of new GitHub sources."),
+    autonomyMaxSources: zod
+      .number()
+      .min(updateEphemeroiSettingsBodyAutonomyMaxSourcesMin)
+      .max(updateEphemeroiSettingsBodyAutonomyMaxSourcesMax)
+      .optional()
+      .describe("Hard cap on the total number of auto-added sources."),
   })
   .describe("Partial update of explorer settings.");
 
@@ -328,6 +381,9 @@ export const updateEphemeroiSettingsResponseNoveltyWeightMax = 1;
 
 export const updateEphemeroiSettingsResponseNoveltyDecayMin = 0;
 export const updateEphemeroiSettingsResponseNoveltyDecayMax = 1;
+
+export const updateEphemeroiSettingsResponseAutonomyMaxSourcesMin = 0;
+export const updateEphemeroiSettingsResponseAutonomyMaxSourcesMax = 1000;
 
 export const UpdateEphemeroiSettingsResponse = zod.object({
   intervalSeconds: zod
@@ -358,6 +414,18 @@ export const UpdateEphemeroiSettingsResponse = zod.object({
         .max(updateEphemeroiSettingsResponseNoveltyDecayMax),
     })
     .describe("Tuning for the novelty signal that drives importance."),
+  autonomy: zod
+    .object({
+      enabled: zod.boolean(),
+      maxSources: zod
+        .number()
+        .min(updateEphemeroiSettingsResponseAutonomyMaxSourcesMin)
+        .max(updateEphemeroiSettingsResponseAutonomyMaxSourcesMax)
+        .describe("Hard cap on the total number of auto-added sources."),
+    })
+    .describe(
+      "When enabled, after each cycle's reflection step the bot scans\nrecent observations for GitHub references and may add up to two\nnew sources on its own (subject to the maxSources hard cap).\n",
+    ),
 });
 
 /**
@@ -383,6 +451,16 @@ export const ListEphemeroiSourcesResponse = zod.object({
       active: zod.boolean(),
       lastPolledAt: zod.coerce.date().nullish(),
       lastError: zod.string().nullish(),
+      autoAdded: zod
+        .boolean()
+        .describe(
+          "True when Ephemeroi added this source itself during a discovery pass.",
+        ),
+      autoAddedReason: zod
+        .string()
+        .nullish()
+        .describe("Short LLM-supplied justification for the auto-add."),
+      autoAddedAt: zod.coerce.date().nullish(),
       createdAt: zod.coerce.date(),
     }),
   ),
@@ -515,6 +593,16 @@ export const ListEphemeroiBeliefsBySourceResponse = zod.object({
       active: zod.boolean(),
       lastPolledAt: zod.coerce.date().nullish(),
       lastError: zod.string().nullish(),
+      autoAdded: zod
+        .boolean()
+        .describe(
+          "True when Ephemeroi added this source itself during a discovery pass.",
+        ),
+      autoAddedReason: zod
+        .string()
+        .nullish()
+        .describe("Short LLM-supplied justification for the auto-add."),
+      autoAddedAt: zod.coerce.date().nullish(),
       createdAt: zod.coerce.date(),
     })
     .nullable()
@@ -615,6 +703,11 @@ export const RunEphemeroiCycleResponse = zod.object({
   beliefsUpdated: zod.number(),
   contradictionsFound: zod.number(),
   reportsCreated: zod.number(),
+  autoSourcesAdded: zod
+    .number()
+    .describe(
+      "How many sources Ephemeroi added to itself this cycle (autonomy).",
+    ),
   ranAt: zod.coerce.date(),
   durationMs: zod.number(),
 });

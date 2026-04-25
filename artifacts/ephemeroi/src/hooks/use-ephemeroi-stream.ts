@@ -6,6 +6,7 @@ import {
   getListEphemeroiReportsQueryKey,
   getListEphemeroiBeliefsQueryKey,
   getListEphemeroiContradictionsQueryKey,
+  getListEphemeroiSourcesQueryKey,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -46,6 +47,16 @@ export function useEphemeroiStream() {
           });
         } else if (data.type === "cycle") {
           queryClient.invalidateQueries({ queryKey: getGetEphemeroiStateQueryKey() });
+        } else if (data.type === "source_auto_added") {
+          // The bot added a new source on its own. Refresh the sources
+          // list so it shows up immediately and tell the user why.
+          queryClient.invalidateQueries({ queryKey: getListEphemeroiSourcesQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getGetEphemeroiStateQueryKey() });
+          const label = data.payload?.source?.label || data.payload?.source?.target || "a new source";
+          toast({
+            title: "Ephemeroi started watching something new",
+            description: `${label} — ${data.payload?.reason || "auto-discovered from recent observations"}`,
+          });
         }
       } catch (err) {
         console.error("Error parsing SSE message:", err);

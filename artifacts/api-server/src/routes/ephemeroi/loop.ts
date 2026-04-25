@@ -17,6 +17,7 @@ import {
 } from "./store";
 import { ingestSource } from "./ingest";
 import { reflectOnObservation } from "./reflect";
+import { runDiscovery } from "./discover";
 import { sendTelegramReport, isTelegramConfigured } from "./telegram";
 import { bus } from "./bus";
 import {
@@ -24,6 +25,7 @@ import {
   beliefToWire,
   contradictionToWire,
   reportToWire,
+  sourceToWire,
 } from "./wire";
 
 const NOVELTY_SAMPLE_SIZE = 200;
@@ -34,6 +36,8 @@ export interface CycleResult {
   beliefsUpdated: number;
   contradictionsFound: number;
   reportsCreated: number;
+  /** How many new sources Ephemeroi added to itself this cycle (autonomy). */
+  autoSourcesAdded: number;
   ranAt: Date;
   durationMs: number;
 }
@@ -120,6 +124,7 @@ class EphemeroiLoop {
     let beliefsUpdated = 0;
     let contradictionsFound = 0;
     let reportsCreated = 0;
+    let autoSourcesAdded = 0;
     let cycleError: Error | null = null;
     try {
       const settings = await getSettings();
@@ -242,6 +247,46 @@ class EphemeroiLoop {
         }
       }
 
+      // 4. Autonomy: let the bot decide whether any GitHub references in the
+      //    observations it just reflected on are worth following. Only
+      //    looks at the observations from THIS cycle so it doesn't keep
+      //    re-evaluating old ones forever. Failures here are isolated —
+      //    discovery errors must never break the rest of the cycle.
+      if (settings.autonomyEnabled && unreflected.length > 0) {
+        try {
+          const discovery = await runDiscovery({
+            observations: unreflected,
+            beliefs: beliefSummaries,
+            autonomyMaxSources: settings.autonomyMaxSources,
+          });
+          autoSourcesAdded = discovery.added.length;
+          if (autoSourcesAdded > 0) {
+            // Re-list sources so we can publish wire-shape rows for the
+            // newly added entries. This keeps the SSE stream consistent
+            // with what /ephemeroi/sources would return.
+            const allSources = await listSources();
+            for (const a of discovery.added) {
+              const row = allSources.find(
+                (s) => s.kind === a.kind && s.target === a.target,
+              );
+              if (row) {
+                bus.publish({
+                  type: "source_auto_added",
+                  payload: {
+                    source: sourceToWire(row),
+                    reason: a.reason,
+                  },
+                });
+              }
+            }
+          }
+        } catch (err) {
+          // Discovery errors are non-fatal: log and move on so the rest of
+          // the cycle's results still get reported.
+          logger.warn({ err }, "Ephemeroi discovery failed");
+        }
+      }
+
       this.lastError = null;
     } catch (err) {
       cycleError = err instanceof Error ? err : new Error(String(err));
@@ -256,6 +301,7 @@ class EphemeroiLoop {
       beliefsUpdated,
       contradictionsFound,
       reportsCreated,
+      autoSourcesAdded,
       ranAt,
       durationMs: Date.now() - startedAt,
     };
@@ -266,6 +312,7 @@ class EphemeroiLoop {
         beliefsUpdated: result.beliefsUpdated,
         contradictionsFound: result.contradictionsFound,
         reportsCreated: result.reportsCreated,
+        autoSourcesAdded: result.autoSourcesAdded,
         ranAt: result.ranAt.toISOString(),
         durationMs: result.durationMs,
       },

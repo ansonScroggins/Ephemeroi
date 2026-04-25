@@ -21,6 +21,7 @@ export * from "./ephemeroiObservationsResponse";
 export * from "./ephemeroiReport";
 export * from "./ephemeroiReportsResponse";
 export * from "./ephemeroiSettings";
+export * from "./ephemeroiSettingsAutonomy";
 export * from "./ephemeroiSettingsNovelty";
 export * from "./ephemeroiSettingsUpdate";
 export * from "./ephemeroiSource";
