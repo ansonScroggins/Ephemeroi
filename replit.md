@@ -131,7 +131,7 @@ Off by default. When `settings.autonomyEnabled` is true, after each cycle's refl
 - `routes/ephemeroi/discover.ts` — three-layer false-positive defense:
   1. Lexical extraction with strict `owner/repo` and `github.com/<user>` regexes; URL form is unconditionally accepted, bare `owner/repo` form requires the literal word "github" within ±120 chars (kills prose like "days/weeks", "pros/cons").
   2. `FALSE_POSITIVE_OWNERS` deny-list (English words, time units, URL/path tokens). `RESERVED_USERS` deny-list for github.com routes (about, login, marketplace, …).
-  3. LLM judge (gpt-4o-mini, JSON-only) given current top beliefs + candidates with explicit reject criteria; max 2 picks per cycle.
+  3. LLM judge (gpt-4o-mini, JSON-only) framed as a *curious learner that learns one thing at a time*: it sees (a) settled beliefs, (b) the **frontier** of low-confidence beliefs, (c) **open questions** (unresolved contradictions), and (d) the existing watched-source list with per-owner overlap counts. Each pick must justify itself with `Resolves:` (an open question), `Deepens:` (a frontier belief), or `Opens:` (a new sub-question). Lateral / redundant picks (same owner already watched, same already-confident belief) are explicitly rejected. Max 2 picks per cycle.
 - `trimRepoSuffix` strips trailing `.git` and prose punctuation greedily eaten by the repo regex (so refs at sentence boundaries still match).
 - Discovery only runs when `unreflected.length > 0` (each ref is evaluated exactly once when first seen). Failures are caught + logged; never break the cycle.
 - `createSource({autoAdded:true, autoAddedReason})` is idempotent via `onConflictDoNothing`. SSE event `source_auto_added` fires per added source so the UI can toast + refresh the sources list.

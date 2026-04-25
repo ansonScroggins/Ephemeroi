@@ -11,6 +11,7 @@ import {
   listBeliefs,
   upsertBelief,
   insertContradiction,
+  listContradictions,
   insertReport,
   markReportDelivered,
   type ObservationRow,
@@ -254,9 +255,22 @@ class EphemeroiLoop {
       //    discovery errors must never break the rest of the cycle.
       if (settings.autonomyEnabled && unreflected.length > 0) {
         try {
+          // Surface the bot's open questions (unresolved contradictions) so
+          // discovery picks sources that go DEEPER on what it doesn't yet
+          // understand, rather than piling on peers of what it already
+          // knows. This is what turns autonomy from "collect lateral
+          // sources" into "learn one thing at a time".
+          const allContradictions = await listContradictions().catch(
+            (): Awaited<ReturnType<typeof listContradictions>> => [],
+          );
+          const openQuestions = allContradictions
+            .filter((c) => !c.resolved)
+            .slice(0, 6)
+            .map((c) => c.summary);
           const discovery = await runDiscovery({
             observations: unreflected,
             beliefs: beliefSummaries,
+            openQuestions,
             autonomyMaxSources: settings.autonomyMaxSources,
           });
           autoSourcesAdded = discovery.added.length;
