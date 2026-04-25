@@ -10,6 +10,7 @@ import {
 import { bus } from "./bus";
 import { observationToWire } from "./wire";
 import { safePublicFetch } from "./guard";
+import { ingestGithub } from "./ingest-github";
 
 const MAX_ITEMS_PER_SOURCE = 8;
 const FETCH_TIMEOUT_MS = 12_000;
@@ -34,6 +35,9 @@ export async function ingestSource(source: SourceRow): Promise<{
       added = await ingestUrl(source);
     } else if (source.kind === "search") {
       added = await ingestSearch(source);
+    } else if (source.kind === "github") {
+      const result = await ingestGithub(source);
+      added = result.added;
     }
     await markSourcePolled(source.id, null);
     for (const obs of added) {

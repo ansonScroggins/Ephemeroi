@@ -39,6 +39,7 @@ export const ephemeroiSourcesTable = pgTable(
     active: boolean("active").notNull().default(true),
     lastPolledAt: timestamp("last_polled_at", { withTimezone: true }),
     lastError: text("last_error"),
+    cursor: jsonb("cursor").$type<Record<string, unknown>>(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .notNull()
       .defaultNow(),
@@ -91,6 +92,7 @@ export const ephemeroiBeliefsTable = pgTable("ephemeroi_beliefs", {
   supportCount: integer("support_count").notNull().default(0),
   contradictCount: integer("contradict_count").notNull().default(0),
   embedding: jsonb("embedding").$type<number[]>(),
+  originSourceId: integer("origin_source_id"),
   firstSeenAt: timestamp("first_seen_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

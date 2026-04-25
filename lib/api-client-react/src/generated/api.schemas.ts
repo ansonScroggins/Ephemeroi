@@ -359,7 +359,7 @@ export interface EphemeroiSettingsUpdate {
 }
 
 /**
- * rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.
+ * rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.
  */
 export type EphemeroiSourceKind =
   (typeof EphemeroiSourceKind)[keyof typeof EphemeroiSourceKind];
@@ -368,6 +368,7 @@ export const EphemeroiSourceKind = {
   rss: "rss",
   url: "url",
   search: "search",
+  github: "github",
 } as const;
 
 export interface EphemeroiSource {
@@ -375,7 +376,7 @@ export interface EphemeroiSource {
   kind: EphemeroiSourceKind;
   /** Friendly display name (auto-derived if not given). */
   label: string;
-  /** For rss/url, the URL. For search, the query string. */
+  /** For rss/url, the URL. For search, the query string. For github, "owner/repo". */
   target: string;
   active: boolean;
   lastPolledAt?: string | null;
@@ -430,6 +431,21 @@ export interface EphemeroiBelief {
 
 export interface EphemeroiBeliefsResponse {
   beliefs: EphemeroiBelief[];
+}
+
+export type EphemeroiBeliefsBySourceResponseContradictionsItem = {
+  id: number;
+  summary: string;
+  resolved: boolean;
+  detectedAt: string;
+};
+
+export interface EphemeroiBeliefsBySourceResponse {
+  /** The matched source row, or null if no source with this kind+target is configured. */
+  source: EphemeroiSource | null;
+  /** Beliefs whose origin source is this row. Empty if Ephemeroi has not yet reflected on any observation from this source. */
+  beliefs: EphemeroiBelief[];
+  contradictions: EphemeroiBeliefsBySourceResponseContradictionsItem[];
 }
 
 export interface EphemeroiContradiction {
@@ -498,6 +514,14 @@ export type ListEphemeroiObservationsParams = {
    * @maximum 500
    */
   limit?: number;
+};
+
+export type ListEphemeroiBeliefsBySourceParams = {
+  kind: EphemeroiSourceKind;
+  /**
+   * For github, "owner/repo" or a github.com URL (canonicalized server-side).
+   */
+  target: string;
 };
 
 export type ListEphemeroiReportsParams = {

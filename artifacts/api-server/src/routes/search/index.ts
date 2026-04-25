@@ -1,6 +1,9 @@
 import { Router, type IRouter } from "express";
 import { openai, OpenAI, type OpenAIClient } from "@workspace/integrations-openai-ai-server";
 import { MetacognitiveSearchBody, GetSampleQueriesResponse } from "@workspace/api-zod";
+import { github, parseRepoTarget, GitHubError } from "../../lib/github-client";
+import { listBeliefsBySource } from "../ephemeroi/store";
+import { logger } from "../../lib/logger";
 
 const router: IRouter = Router();
 
@@ -324,6 +327,10 @@ router.post("/search/metacognitive", async (req, res): Promise<void> => {
 
     let systemPrompt: string;
     let userPrompt: string;
+    // Optional pre-fetched github + ephemeroi context (research / web modes only).
+    // Populated below; injected into the user prompt and surfaced as RETRIEVE
+    // steps so the user sees them in the live stream.
+    let preContextBlock = "";
 
     if (mode === "code") {
       systemPrompt = CODE_SYSTEM_PROMPT;
@@ -383,6 +390,87 @@ Conduct a metacognitive search grounded in the ${sources.length} web sources pro
       userPrompt = `Research question: "${query}"
 
 Please conduct a metacognitive search on this question. Use ${Math.min(maxDepth, 5)} retrieval steps maximum. Output each step using the exact format specified.`;
+    }
+
+    // ===== GitHub-aware pre-retrieval =====
+    // If the user's question references a github repo (owner/repo or a
+    // github.com URL), fetch live repo data + Ephemeroi's running beliefs
+    // about it BEFORE the LLM stream starts. We emit synthetic RETRIEVE steps
+    // so the live stream shows them, and we splice the findings into the
+    // user prompt so the model can build on them.
+    if (mode !== "code") {
+      const ghRef = detectGithubRef(query);
+      if (ghRef) {
+        const ctx = await fetchGithubContext(ghRef.owner, ghRef.repo);
+        if (ctx) {
+          sendEvent({
+            type: "step",
+            stepType: "RETRIEVE",
+            data: {
+              subQuestion: `What is github.com/${ghRef.canonical} actually about right now?`,
+              sourceType: "empirical",
+              findings: ctx.findings,
+              confidence: 0.78,
+              references: [`github:${ghRef.canonical}`, ctx.repoUrl],
+              lens: "VISIBLE",
+              lensRationale:
+                "Pulled the live repo state (README, recent commits, latest release) for breadth before reasoning.",
+            },
+          });
+          preContextBlock += `\n\n--- LIVE GITHUB CONTEXT for ${ghRef.canonical} (already retrieved, integrate into your reasoning, do not re-fetch) ---\n${ctx.promptBlock}\n--- END GITHUB CONTEXT ---`;
+
+          // Ephemeroi belief bridge
+          try {
+            const bridge = await listBeliefsBySource("github", ghRef.canonical);
+            if (bridge.source && (bridge.beliefs.length > 0 || bridge.contradictions.length > 0)) {
+              const top = bridge.beliefs.slice(0, 3);
+              const beliefLines = top
+                .map(
+                  (b) =>
+                    `• "${b.proposition}" (confidence ${b.confidence.toFixed(2)}, ${b.supportCount} supports / ${b.contradictCount} contradicts)`,
+                )
+                .join("\n");
+              const contradictionLines = bridge.contradictions
+                .filter((c) => !c.resolved)
+                .slice(0, 3)
+                .map((c) => `• ${c.summary}`)
+                .join("\n");
+              const findings =
+                `Ephemeroi has been autonomously watching this repo. Top beliefs:\n${beliefLines || "(none yet)"}` +
+                (contradictionLines ? `\n\nOpen contradictions Ephemeroi has flagged:\n${contradictionLines}` : "");
+              sendEvent({
+                type: "step",
+                stepType: "RETRIEVE",
+                data: {
+                  subQuestion: `What is Ephemeroi's running take on ${ghRef.canonical}?`,
+                  sourceType: "review",
+                  findings,
+                  confidence: 0.62,
+                  references: [`ephemeroi:source/${bridge.source.id}`],
+                  lens: "INFRARED",
+                  lensRationale:
+                    "Grounding in the watcher's accumulated beliefs — depth, not breadth.",
+                },
+              });
+              preContextBlock += `\n\n--- EPHEMEROI BELIEFS for ${ghRef.canonical} ---\n${findings}\n--- END EPHEMEROI BELIEFS ---`;
+            }
+          } catch (bridgeErr) {
+            logger.warn({ err: bridgeErr }, "Ephemeroi bridge query failed");
+          }
+
+          // Splice the pre-context into the user prompt, plus a short nudge
+          // so the model knows it should weave the findings in (and not emit
+          // a duplicate RETRIEVE for the same lookup).
+          if (preContextBlock) {
+            userPrompt =
+              userPrompt +
+              `\n\nIMPORTANT: I have already pre-fetched live context for the github reference in the question. ` +
+              `Treat the block(s) below as already-completed retrieves — your own RETRIEVE steps should build on them, not re-fetch them. ` +
+              `Cite "[github:${ghRef.canonical}]" when you reference the repo.` +
+              preContextBlock;
+          }
+        }
+      }
     }
 
     const buildStream = (client: OpenAIClient, m: string) =>
@@ -467,6 +555,137 @@ Please conduct a metacognitive search on this question. Use ${Math.min(maxDepth,
     res.end();
   }
 });
+
+// ===== GitHub helpers =====
+
+interface GhRef {
+  owner: string;
+  repo: string;
+  canonical: string;
+}
+
+const STOPWORD_OWNER_REPO = new Set([
+  "and/or",
+  "input/output",
+  "his/her",
+  "he/she",
+  "yes/no",
+  "true/false",
+  "n/a",
+  "n/a.",
+  "either/or",
+  "pros/cons",
+  "client/server",
+  "read/write",
+  "on/off",
+  "win/loss",
+]);
+
+function detectGithubRef(text: string): GhRef | null {
+  // 1. explicit github: prefix or github.com URL
+  const urlMatch = text.match(/https?:\/\/(?:www\.)?github\.com\/([\w][\w.-]*)\/([\w][\w.-]*)(?:[#?\/\s]|$)/i);
+  if (urlMatch) {
+    const parsed = parseRepoTarget(`${urlMatch[1]}/${urlMatch[2]}`);
+    if (parsed) return parsed;
+  }
+  const prefix = text.match(/(?:^|\s)github:([\w][\w.-]*\/[\w][\w.-]*)/i);
+  if (prefix) {
+    const parsed = parseRepoTarget(prefix[1]!);
+    if (parsed) return parsed;
+  }
+  // 2. plain "owner/repo" — only accept ones that contain a hyphen, dot, or
+  // an obvious project-name segment, to avoid matching pairs like "and/or".
+  // Also require at least one of owner/repo to be at least 3 chars.
+  const matches = text.matchAll(/(?:^|[\s(`"'])([\w][\w.-]{0,38})\/([\w][\w.-]{0,38})(?=[\s)`"'.,!?]|$)/g);
+  for (const m of matches) {
+    const owner = m[1]!;
+    const repo = m[2]!;
+    const candidate = `${owner.toLowerCase()}/${repo.toLowerCase()}`;
+    if (STOPWORD_OWNER_REPO.has(candidate)) continue;
+    if (owner.length < 2 || repo.length < 2) continue;
+    if (owner.length < 3 && repo.length < 3) continue;
+    // Filter common false positives: pure "word/word" with no separators is
+    // suspicious unless one side is clearly a project name (has hyphen/dot/digit).
+    const looksLikeProject = /[-_.\d]/.test(owner) || /[-_.\d]/.test(repo);
+    if (!looksLikeProject) continue;
+    const parsed = parseRepoTarget(`${owner}/${repo}`);
+    if (parsed) return parsed;
+  }
+  return null;
+}
+
+interface GithubContext {
+  findings: string;
+  promptBlock: string;
+  repoUrl: string;
+}
+
+async function fetchGithubContext(owner: string, repo: string): Promise<GithubContext | null> {
+  try {
+    const meta = await github.getRepo(owner, repo);
+    let readme: string | null = null;
+    try {
+      readme = await github.getReadme(owner, repo);
+    } catch (err) {
+      logger.debug({ err }, "github readme fetch failed");
+    }
+    const readmeShort = readme ? readme.slice(0, 3000) : null;
+
+    let commits: Awaited<ReturnType<typeof github.listCommits>> = [];
+    try {
+      commits = await github.listCommits(owner, repo, { perPage: 5, sha: meta.default_branch });
+    } catch (err) {
+      logger.debug({ err }, "github commits fetch failed");
+    }
+
+    let releases: Awaited<ReturnType<typeof github.listReleases>> = [];
+    try {
+      releases = await github.listReleases(owner, repo, 1);
+    } catch (err) {
+      logger.debug({ err }, "github releases fetch failed");
+    }
+    const latestRelease = releases[0];
+
+    const commitLines = commits
+      .map((c) => {
+        const msg = (c.commit?.message ?? "").split("\n")[0]!.slice(0, 100);
+        const who = c.author?.login ?? c.commit?.author?.name ?? "unknown";
+        return `  ${c.sha.slice(0, 7)} — ${msg} (${who})`;
+      })
+      .join("\n");
+
+    const releaseLine = latestRelease
+      ? `${latestRelease.tag_name}${latestRelease.name && latestRelease.name !== latestRelease.tag_name ? ` (${latestRelease.name})` : ""}${latestRelease.published_at ? ` published ${latestRelease.published_at}` : ""}`
+      : "no releases yet";
+
+    const findings =
+      `**${meta.full_name}** — ${meta.description ?? "(no description)"}\n` +
+      `Language: ${meta.language ?? "n/a"} · ${meta.stargazers_count} stars · ${meta.open_issues_count} open issues\n` +
+      `Default branch: ${meta.default_branch} · last pushed ${meta.pushed_at}\n` +
+      `Latest release: ${releaseLine}\n` +
+      `Recent commits (top 5 on ${meta.default_branch}):\n${commitLines || "  (none)"}\n` +
+      (readmeShort ? `\nREADME (truncated):\n${readmeShort.slice(0, 600)}…` : "\n(no README found)");
+
+    const promptBlock =
+      `Repo: ${meta.full_name}\n` +
+      `URL: ${meta.html_url}\n` +
+      `Description: ${meta.description ?? "(none)"}\n` +
+      `Language: ${meta.language ?? "n/a"}, stars: ${meta.stargazers_count}, open issues: ${meta.open_issues_count}\n` +
+      `Default branch: ${meta.default_branch}\n` +
+      `Latest release: ${releaseLine}\n` +
+      `Top 5 recent commits:\n${commitLines || "  (none)"}\n` +
+      (readmeShort ? `\nREADME (truncated to ~3KB):\n${readmeShort}` : "\nREADME: (none)");
+
+    return { findings, promptBlock, repoUrl: meta.html_url };
+  } catch (err) {
+    if (err instanceof GitHubError && err.status === 404) {
+      logger.info({ owner, repo }, "GitHub pre-retrieval: repo not found, skipping");
+      return null;
+    }
+    logger.warn({ err }, "GitHub pre-retrieval failed");
+    return null;
+  }
+}
 
 router.get("/search/sample-queries", (_req, res): void => {
   const response = GetSampleQueriesResponse.parse({ queries: SAMPLE_QUERIES });

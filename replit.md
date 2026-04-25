@@ -63,6 +63,14 @@ The model is instructed to switch lenses across a run rather than churn on one. 
 
 Lens fields (`lens`, `lensRationale`) are optional in the TS schema (`use-search-stream.ts`) so older runs and fallback parses still render. The renderer shows a small pill on RetrieveBubble (`data-testid="lens-{visible|infrared|uv|prism}"`).
 
+### GitHub retrieval + Ephemeroi belief bridge
+When a query contains a `github:` prefix, a github.com URL, or a heuristic `owner/repo` token (stopwords excluded; requires `[-_.\d]` to avoid false positives like `apples/oranges`), Metacog runs a pre-LLM retrieval step before the model produces its plan.
+- `detectGithubRef(query)` in `routes/search/index.ts` returns the canonical `owner/repo` or null.
+- `fetchGithubContext(ref)` pulls repo metadata + README (truncated to 3 KB) + last 5 commits + latest release via `github-client.ts`.
+- A synthetic `RETRIEVE` step is emitted with `sourceType:"empirical"`, `lens:"VISIBLE"`, references `["github:owner/repo", "https://github.com/owner/repo"]`. The findings block is also spliced into the LLM's user prompt as `preContextBlock` so reasoning is grounded.
+- A second synthetic `RETRIEVE` step (`sourceType:"infrared"`, `lens:"INFRARED"`, label "Ephemeroi's running take on owner/repo") fires only if `listBeliefsBySource("github", ref)` returns non-empty beliefs or contradictions. Top 3 by confidence + open contradictions.
+- Skipped when `mode === "code"` (we don't want code-mode answers polluted by general repo metadata).
+
 ### Persistent memory (déjà vu)
 
 Client-side memory of past runs lives in `src/lib/memory.ts` (localStorage, key `metacog:memory:v1`, capped at 50 entries LRU). Each entry stores: query, mode, REFLECT `personalSummary`, SYNTHESIZE `finalConfidence`, lenses used, and normalized tokens for similarity matching.
@@ -90,9 +98,9 @@ Always-on background observer that watches the world (RSS feeds, URLs, search to
 
 ### DB schema (`lib/db/src/schema/ephemeroi.ts`)
 - `ephemeroi_settings` (singleton; defaults: 300s interval, 0.55 threshold, paused=false, telegramEnabled=true, noveltyWeight=0.5)
-- `ephemeroi_sources` (kind: rss|url|search, unique on (kind, target))
+- `ephemeroi_sources` (kind: rss|url|search|github, unique on (kind, target), `cursor` jsonb for per-source poll bookmarks)
 - `ephemeroi_observations` (jsonb embedding `number[]`, doublePrecision novelty/importance, unique on `url_hash`, indexes on `observed_at` and `reflected`)
-- `ephemeroi_beliefs` (proposition, confidence −1..1, supportCount, contradictCount, embedding)
+- `ephemeroi_beliefs` (proposition, confidence −1..1, supportCount, contradictCount, embedding, `originSourceId` nullable FK-less integer for source-of-origin tracking; populated on insert and backfilled on update if previously null)
 - `ephemeroi_contradictions` (beliefId nullable, observationId nullable, summary, resolved)
 - `ephemeroi_reports` (importance, headline, body, observationIds jsonb, delivered/deliveredAt)
 - FK constraints intentionally absent so deleting a source does not delete its history.
@@ -108,3 +116,17 @@ All routes live under `/ephemeroi/*` in `lib/api-spec/openapi.yaml` except the S
 - To verify end-to-end: POST `/api/ephemeroi/sources` with HN feed `https://news.ycombinator.com/rss`, lower threshold via PUT settings, then POST `/api/ephemeroi/cycle/run`.
 - Telegram delivery requires `TELEGRAM_BOT_TOKEN` + `TELEGRAM_CHAT_ID` secrets; loop silently skips delivery when missing.
 - Search-source kind is a v1 stub. Real web search ingestion (Tavily/Brave) is a deliberate follow-up.
+
+### GitHub source kind
+GitHub repos are first-class observation sources alongside RSS/URL/search.
+- **Auth**: `@replit/connectors-sdk` (`ReplitConnectors.proxy("github", path)`) via the active GitHub connection. No PAT required; OAuth managed by Replit.
+- **Client**: `artifacts/api-server/src/lib/github-client.ts` — `parseRepoTarget(input)` accepts `owner/repo` or full github.com URL and canonicalizes to `owner/repo`; `github.{getRepo,listCommits,listReleases,listIssues,getReadme}`; `GitHubError(status,msg)` for non-2xx.
+- **Ingestion**: `routes/ephemeroi/ingest-github.ts` polls commits / releases / issues bookmarked by per-source `cursor.{lastCommitSha,lastReleaseId,lastIssueUpdatedAt}`. Caps: 30 commits, 10 releases, 30 issues per cycle. Cursor advances only on success; partial failures keep prior cursor so we re-try next cycle. Rate-limit (429) is logged and re-thrown as `GitHubError` so the loop's normal `lastError` path handles it without crashing.
+- **Public-only v1**: we only read; no writes back to GitHub (no comments/issues/PRs). Private-repo support is a follow-up gated on an explicit settings toggle.
+- **UI**: `artifacts/ephemeroi/src/pages/sources.tsx` adds a "GitHub Repo" select option with regex validation `owner/repo` or `https://github.com/owner/repo`, Github icon from lucide-react. Backend re-validates and canonicalizes before insert.
+
+### Bridge endpoint — `GET /api/ephemeroi/beliefs/by-source`
+Lets Metacog ask "what does Ephemeroi currently believe about this watched source?".
+- Query: `?kind=github&target=owner/repo` (kind enum matches sources; target validated/canonicalized server-side for github).
+- Returns `{source, beliefs[{proposition,confidence,supportCount,contradictCount,…}], contradictions[{summary,resolved,…}]}` ordered by belief confidence desc. Empty arrays if no origin-tracked beliefs (legacy beliefs without origin are intentionally not returned to keep the surface honest).
+- `originSourceId` is set on belief insert AND backfilled on update when previously null, so existing beliefs naturally accrue origin tracking as new observations contribute to them.

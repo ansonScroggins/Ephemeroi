@@ -17,6 +17,7 @@ import type {
 } from "@tanstack/react-query";
 
 import type {
+  EphemeroiBeliefsBySourceResponse,
   EphemeroiBeliefsResponse,
   EphemeroiContradictionsResponse,
   EphemeroiCycleResult,
@@ -30,6 +31,7 @@ import type {
   EphemeroiState,
   ErrorResponse,
   HealthStatus,
+  ListEphemeroiBeliefsBySourceParams,
   ListEphemeroiObservationsParams,
   ListEphemeroiReportsParams,
   MetacognitiveSearchRequest,
@@ -959,6 +961,121 @@ export function useListEphemeroiBeliefs<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListEphemeroiBeliefsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Bridge endpoint used by Metacog (and other consumers) to ask Ephemeroi
+what it currently believes about a single source — most usefully, a
+github repo it is watching. Returns beliefs whose `originSourceId`
+points at the source, plus contradictions tied to those beliefs or to
+observations from that source.
+
+ * @summary Beliefs and contradictions tied to a specific watched source
+ */
+export const getListEphemeroiBeliefsBySourceUrl = (
+  params: ListEphemeroiBeliefsBySourceParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/ephemeroi/beliefs/by-source?${stringifiedParams}`
+    : `/api/ephemeroi/beliefs/by-source`;
+};
+
+export const listEphemeroiBeliefsBySource = async (
+  params: ListEphemeroiBeliefsBySourceParams,
+  options?: RequestInit,
+): Promise<EphemeroiBeliefsBySourceResponse> => {
+  return customFetch<EphemeroiBeliefsBySourceResponse>(
+    getListEphemeroiBeliefsBySourceUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListEphemeroiBeliefsBySourceQueryKey = (
+  params?: ListEphemeroiBeliefsBySourceParams,
+) => {
+  return [
+    `/api/ephemeroi/beliefs/by-source`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListEphemeroiBeliefsBySourceQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEphemeroiBeliefsBySource>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: ListEphemeroiBeliefsBySourceParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEphemeroiBeliefsBySource>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListEphemeroiBeliefsBySourceQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEphemeroiBeliefsBySource>>
+  > = ({ signal }) =>
+    listEphemeroiBeliefsBySource(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiBeliefsBySource>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEphemeroiBeliefsBySourceQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEphemeroiBeliefsBySource>>
+>;
+export type ListEphemeroiBeliefsBySourceQueryError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Beliefs and contradictions tied to a specific watched source
+ */
+
+export function useListEphemeroiBeliefsBySource<
+  TData = Awaited<ReturnType<typeof listEphemeroiBeliefsBySource>>,
+  TError = ErrorType<ErrorResponse>,
+>(
+  params: ListEphemeroiBeliefsBySourceParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEphemeroiBeliefsBySource>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEphemeroiBeliefsBySourceQueryOptions(
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

@@ -135,16 +135,18 @@ export const GetEphemeroiStateResponse = zod.object({
     zod.object({
       id: zod.number(),
       kind: zod
-        .enum(["rss", "url", "search"])
+        .enum(["rss", "url", "search", "github"])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.",
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.",
         ),
       label: zod
         .string()
         .describe("Friendly display name (auto-derived if not given)."),
       target: zod
         .string()
-        .describe("For rss\/url, the URL. For search, the query string."),
+        .describe(
+          'For rss\/url, the URL. For search, the query string. For github, \"owner\/repo\".',
+        ),
       active: zod.boolean(),
       lastPolledAt: zod.coerce.date().nullish(),
       lastError: zod.string().nullish(),
@@ -156,9 +158,9 @@ export const GetEphemeroiStateResponse = zod.object({
       id: zod.number(),
       sourceId: zod.number().nullish(),
       sourceKind: zod
-        .enum(["rss", "url", "search"])
+        .enum(["rss", "url", "search", "github"])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.",
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.",
         ),
       sourceLabel: zod.string(),
       title: zod.string(),
@@ -366,16 +368,18 @@ export const ListEphemeroiSourcesResponse = zod.object({
     zod.object({
       id: zod.number(),
       kind: zod
-        .enum(["rss", "url", "search"])
+        .enum(["rss", "url", "search", "github"])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.",
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.",
         ),
       label: zod
         .string()
         .describe("Friendly display name (auto-derived if not given)."),
       target: zod
         .string()
-        .describe("For rss\/url, the URL. For search, the query string."),
+        .describe(
+          'For rss\/url, the URL. For search, the query string. For github, \"owner\/repo\".',
+        ),
       active: zod.boolean(),
       lastPolledAt: zod.coerce.date().nullish(),
       lastError: zod.string().nullish(),
@@ -389,9 +393,9 @@ export const ListEphemeroiSourcesResponse = zod.object({
  */
 export const CreateEphemeroiSourceBody = zod.object({
   kind: zod
-    .enum(["rss", "url", "search"])
+    .enum(["rss", "url", "search", "github"])
     .describe(
-      "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.",
+      "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.",
     ),
   target: zod.string(),
   label: zod.string().optional(),
@@ -424,9 +428,9 @@ export const ListEphemeroiObservationsResponse = zod.object({
       id: zod.number(),
       sourceId: zod.number().nullish(),
       sourceKind: zod
-        .enum(["rss", "url", "search"])
+        .enum(["rss", "url", "search", "github"])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.",
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.",
         ),
       sourceLabel: zod.string(),
       title: zod.string(),
@@ -466,6 +470,84 @@ export const ListEphemeroiBeliefsResponse = zod.object({
       contradictCount: zod.number(),
       firstSeenAt: zod.coerce.date(),
       lastUpdatedAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
+ * Bridge endpoint used by Metacog (and other consumers) to ask Ephemeroi
+what it currently believes about a single source — most usefully, a
+github repo it is watching. Returns beliefs whose `originSourceId`
+points at the source, plus contradictions tied to those beliefs or to
+observations from that source.
+
+ * @summary Beliefs and contradictions tied to a specific watched source
+ */
+export const ListEphemeroiBeliefsBySourceQueryParams = zod.object({
+  kind: zod.enum(["rss", "url", "search", "github"]),
+  target: zod.coerce
+    .string()
+    .describe(
+      'For github, \"owner\/repo\" or a github.com URL (canonicalized server-side).',
+    ),
+});
+
+export const listEphemeroiBeliefsBySourceResponseBeliefsItemConfidenceMin = -1;
+export const listEphemeroiBeliefsBySourceResponseBeliefsItemConfidenceMax = 1;
+
+export const ListEphemeroiBeliefsBySourceResponse = zod.object({
+  source: zod
+    .object({
+      id: zod.number(),
+      kind: zod
+        .enum(["rss", "url", "search", "github"])
+        .describe(
+          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.",
+        ),
+      label: zod
+        .string()
+        .describe("Friendly display name (auto-derived if not given)."),
+      target: zod
+        .string()
+        .describe(
+          'For rss\/url, the URL. For search, the query string. For github, \"owner\/repo\".',
+        ),
+      active: zod.boolean(),
+      lastPolledAt: zod.coerce.date().nullish(),
+      lastError: zod.string().nullish(),
+      createdAt: zod.coerce.date(),
+    })
+    .nullable()
+    .describe(
+      "The matched source row, or null if no source with this kind+target is configured.",
+    ),
+  beliefs: zod
+    .array(
+      zod.object({
+        id: zod.number(),
+        proposition: zod.string(),
+        confidence: zod
+          .number()
+          .min(listEphemeroiBeliefsBySourceResponseBeliefsItemConfidenceMin)
+          .max(listEphemeroiBeliefsBySourceResponseBeliefsItemConfidenceMax)
+          .describe(
+            "-1 = strongly disbelieved, 0 = uncertain, 1 = strongly believed.",
+          ),
+        supportCount: zod.number(),
+        contradictCount: zod.number(),
+        firstSeenAt: zod.coerce.date(),
+        lastUpdatedAt: zod.coerce.date(),
+      }),
+    )
+    .describe(
+      "Beliefs whose origin source is this row. Empty if Ephemeroi has not yet reflected on any observation from this source.",
+    ),
+  contradictions: zod.array(
+    zod.object({
+      id: zod.number(),
+      summary: zod.string(),
+      resolved: zod.boolean(),
+      detectedAt: zod.coerce.date(),
     }),
   ),
 });

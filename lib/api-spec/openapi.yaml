@@ -215,6 +215,42 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EphemeroiBeliefsResponse"
+  /ephemeroi/beliefs/by-source:
+    get:
+      operationId: listEphemeroiBeliefsBySource
+      tags: [ephemeroi]
+      summary: Beliefs and contradictions tied to a specific watched source
+      description: |
+        Bridge endpoint used by Metacog (and other consumers) to ask Ephemeroi
+        what it currently believes about a single source — most usefully, a
+        github repo it is watching. Returns beliefs whose `originSourceId`
+        points at the source, plus contradictions tied to those beliefs or to
+        observations from that source.
+      parameters:
+        - name: kind
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/EphemeroiSourceKind"
+        - name: target
+          in: query
+          required: true
+          schema:
+            type: string
+          description: For github, "owner/repo" or a github.com URL (canonicalized server-side).
+      responses:
+        "200":
+          description: Beliefs and contradictions linked to the source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiBeliefsBySourceResponse"
+        "400":
+          description: Invalid kind or target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /ephemeroi/contradictions:
     get:
       operationId: listEphemeroiContradictions
@@ -658,8 +694,8 @@ components:
 
     EphemeroiSourceKind:
       type: string
-      enum: [rss, url, search]
-      description: rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.
+      enum: [rss, url, search, github]
+      description: rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.
 
     EphemeroiSource:
       type: object
@@ -673,7 +709,7 @@ components:
           description: Friendly display name (auto-derived if not given).
         target:
           type: string
-          description: For rss/url, the URL. For search, the query string.
+          description: For rss/url, the URL. For search, the query string. For github, "owner/repo".
         active:
           type: boolean
         lastPolledAt:
@@ -783,6 +819,35 @@ components:
           items:
             $ref: "#/components/schemas/EphemeroiBelief"
       required: [beliefs]
+
+    EphemeroiBeliefsBySourceResponse:
+      type: object
+      properties:
+        source:
+          $ref: "#/components/schemas/EphemeroiSource"
+          nullable: true
+          description: The matched source row, or null if no source with this kind+target is configured.
+        beliefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiBelief"
+          description: Beliefs whose origin source is this row. Empty if Ephemeroi has not yet reflected on any observation from this source.
+        contradictions:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              summary:
+                type: string
+              resolved:
+                type: boolean
+              detectedAt:
+                type: string
+                format: date-time
+            required: [id, summary, resolved, detectedAt]
+      required: [source, beliefs, contradictions]
 
     EphemeroiContradiction:
       type: object

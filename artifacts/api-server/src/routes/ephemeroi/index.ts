@@ -23,10 +23,12 @@ import {
   deleteSource,
   listRecentObservations,
   listBeliefs,
+  listBeliefsBySource,
   listContradictions,
   listRecentReports,
   type SourceKind,
 } from "./store";
+import { parseRepoTarget } from "../../lib/github-client";
 import {
   observationToWire,
   beliefToWire,
@@ -146,16 +148,71 @@ router.post("/ephemeroi/sources", async (req, res) => {
       return;
     }
   }
+  // Canonicalize github targets to "owner/repo" so dedup + bridge lookups work.
+  let target = parsed.data.target;
+  if (parsed.data.kind === "github") {
+    const repo = parseRepoTarget(target);
+    if (!repo) {
+      res.status(400).json({
+        error: "github target must be \"owner/repo\" or a github.com URL",
+      });
+      return;
+    }
+    target = repo.canonical;
+  }
   try {
     const created = await createSource({
       kind: parsed.data.kind as SourceKind,
-      target: parsed.data.target,
+      target,
       label: parsed.data.label ?? undefined,
     });
     res.status(201).json(sourceToWire(created));
   } catch (err) {
     logger.error({ err }, "POST /ephemeroi/sources failed");
     res.status(500).json({ error: "Failed to create source" });
+  }
+});
+
+// ===== Bridge: beliefs by source =====
+// Used by Metacog to ask Ephemeroi what it currently believes about a watched
+// surface (e.g. a GitHub repo). Read-only, no auth — mirrors the rest of
+// /api/ephemeroi which is already public on this server.
+router.get("/ephemeroi/beliefs/by-source", async (req, res) => {
+  const kindRaw = req.query["kind"];
+  const targetRaw = req.query["target"];
+  if (typeof kindRaw !== "string" || typeof targetRaw !== "string") {
+    res.status(400).json({ error: "kind and target query params required" });
+    return;
+  }
+  const allowed: ReadonlyArray<SourceKind> = ["rss", "url", "search", "github"];
+  if (!allowed.includes(kindRaw as SourceKind)) {
+    res.status(400).json({ error: `invalid kind, expected one of ${allowed.join(", ")}` });
+    return;
+  }
+  let target = targetRaw;
+  if (kindRaw === "github") {
+    const repo = parseRepoTarget(targetRaw);
+    if (!repo) {
+      res.status(400).json({ error: "invalid github target" });
+      return;
+    }
+    target = repo.canonical;
+  }
+  try {
+    const result = await listBeliefsBySource(kindRaw as SourceKind, target);
+    res.json({
+      source: result.source ? sourceToWire(result.source) : null,
+      beliefs: result.beliefs.map(beliefToWire),
+      contradictions: result.contradictions.map((c) => ({
+        id: c.id,
+        summary: c.summary,
+        resolved: c.resolved,
+        detectedAt: c.detectedAt.toISOString(),
+      })),
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /ephemeroi/beliefs/by-source failed");
+    res.status(500).json({ error: "Failed to load beliefs by source" });
   }
 });
 

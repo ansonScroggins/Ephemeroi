@@ -97,7 +97,7 @@ export async function updateSettings(
 
 // ===== Sources =====
 
-export type SourceKind = "rss" | "url" | "search";
+export type SourceKind = "rss" | "url" | "search" | "github";
 
 export interface SourceRow {
   id: number;
@@ -180,8 +180,31 @@ export async function markSourcePolled(
     .where(eq(ephemeroiSourcesTable.id, id));
 }
 
+export async function getSourceCursor(
+  id: number,
+): Promise<Record<string, unknown> | null> {
+  const rows = await db
+    .select({ cursor: ephemeroiSourcesTable.cursor })
+    .from(ephemeroiSourcesTable)
+    .where(eq(ephemeroiSourcesTable.id, id))
+    .limit(1);
+  if (rows.length === 0) return null;
+  return (rows[0]!.cursor as Record<string, unknown> | null) ?? null;
+}
+
+export async function updateSourceCursor(
+  id: number,
+  cursor: Record<string, unknown>,
+): Promise<void> {
+  await db
+    .update(ephemeroiSourcesTable)
+    .set({ cursor })
+    .where(eq(ephemeroiSourcesTable.id, id));
+}
+
 function deriveLabel(kind: SourceKind, target: string): string {
   if (kind === "search") return `Search: ${target}`;
+  if (kind === "github") return `GitHub: ${target}`;
   try {
     const u = new URL(target);
     return u.hostname.replace(/^www\./, "");
@@ -325,6 +348,7 @@ export interface BeliefRow {
   supportCount: number;
   contradictCount: number;
   embedding: number[] | null;
+  originSourceId: number | null;
   firstSeenAt: Date;
   lastUpdatedAt: Date;
 }
@@ -339,6 +363,7 @@ function rowToBelief(
     supportCount: r.supportCount,
     contradictCount: r.contradictCount,
     embedding: r.embedding,
+    originSourceId: r.originSourceId ?? null,
     firstSeenAt: r.firstSeenAt,
     lastUpdatedAt: r.lastUpdatedAt,
   };
@@ -368,6 +393,7 @@ export async function upsertBelief(input: {
   proposition: string;
   deltaConfidence: number;
   embedding?: number[] | null;
+  originSourceId?: number | null;
 }): Promise<BeliefRow> {
   const existing = await findBeliefByProposition(input.proposition);
   if (existing) {
@@ -385,6 +411,8 @@ export async function upsertBelief(input: {
         supportCount: existing.supportCount + support,
         contradictCount: existing.contradictCount + contradict,
         embedding: input.embedding ?? existing.embedding,
+        originSourceId:
+          existing.originSourceId ?? input.originSourceId ?? null,
         lastUpdatedAt: new Date(),
       })
       .where(eq(ephemeroiBeliefsTable.id, existing.id));
@@ -399,9 +427,73 @@ export async function upsertBelief(input: {
       supportCount: input.deltaConfidence > 0 ? 1 : 0,
       contradictCount: input.deltaConfidence < 0 ? 1 : 0,
       embedding: input.embedding ?? null,
+      originSourceId: input.originSourceId ?? null,
     })
     .returning();
   return rowToBelief(inserted[0]!);
+}
+
+export async function listBeliefsBySource(
+  kind: SourceKind,
+  target: string,
+): Promise<{
+  source: SourceRow | null;
+  beliefs: BeliefRow[];
+  contradictions: Array<{
+    id: number;
+    summary: string;
+    resolved: boolean;
+    detectedAt: Date;
+  }>;
+}> {
+  const sourceRows = await db
+    .select()
+    .from(ephemeroiSourcesTable)
+    .where(
+      and(
+        eq(ephemeroiSourcesTable.kind, kind),
+        eq(ephemeroiSourcesTable.target, target),
+      ),
+    )
+    .limit(1);
+  if (sourceRows.length === 0) {
+    return { source: null, beliefs: [], contradictions: [] };
+  }
+  const source = rowToSource(sourceRows[0]!);
+
+  const beliefRows = await db
+    .select()
+    .from(ephemeroiBeliefsTable)
+    .where(eq(ephemeroiBeliefsTable.originSourceId, source.id))
+    .orderBy(desc(ephemeroiBeliefsTable.confidence));
+  const beliefs = beliefRows.map(rowToBelief);
+
+  // Contradictions tied to those beliefs (or to observations from this source).
+  const obsIds = await db
+    .select({ id: ephemeroiObservationsTable.id })
+    .from(ephemeroiObservationsTable)
+    .where(eq(ephemeroiObservationsTable.sourceId, source.id));
+  const obsIdSet = new Set(obsIds.map((r) => r.id));
+  const beliefIdSet = new Set(beliefs.map((b) => b.id));
+
+  const allContradictions = await db
+    .select()
+    .from(ephemeroiContradictionsTable)
+    .orderBy(desc(ephemeroiContradictionsTable.detectedAt));
+  const contradictions = allContradictions
+    .filter(
+      (c) =>
+        (c.beliefId !== null && beliefIdSet.has(c.beliefId)) ||
+        (c.observationId !== null && obsIdSet.has(c.observationId)),
+    )
+    .map((c) => ({
+      id: c.id,
+      summary: c.summary,
+      resolved: c.resolved,
+      detectedAt: c.detectedAt,
+    }));
+
+  return { source, beliefs, contradictions };
 }
 
 // ===== Contradictions =====

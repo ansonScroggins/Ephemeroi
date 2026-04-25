@@ -7,7 +7,7 @@
  */
 
 /**
- * rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query.
+ * rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity.
  */
 export type EphemeroiSourceKind =
   (typeof EphemeroiSourceKind)[keyof typeof EphemeroiSourceKind];
@@ -16,4 +16,5 @@ export const EphemeroiSourceKind = {
   rss: "rss",
   url: "url",
   search: "search",
+  github: "github",
 } as const;

@@ -177,6 +177,7 @@ class EphemeroiLoop {
               proposition: upd.proposition,
               deltaConfidence: upd.deltaConfidence,
               embedding: obs.embedding,
+              originSourceId: obs.sourceId,
             });
             beliefsUpdated += 1;
             bus.publish({
