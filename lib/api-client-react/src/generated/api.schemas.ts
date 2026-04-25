@@ -429,6 +429,41 @@ export interface EphemeroiSourcesResponse {
   sources: EphemeroiSource[];
 }
 
+/**
+ * Per-axis values for a source's state vector. Each axis is in [0, 1]
+(for the absolute vector) or [-0.3, 0.3] (for a delta).
+
+ */
+export interface EphemeroiStateAxes {
+  /** What the source CAN DO (features, scope, reach). */
+  capability: number;
+  /** Correctness, proof guarantees, security posture. */
+  integrity: number;
+  /** Friction for users — docs, install path, ergonomics. */
+  usability: number;
+  /** Reputation, governance, perceived legitimacy. */
+  trust: number;
+}
+
+/**
+ * Current 4D state vector for a source plus the most-recent delta and
+the one-line insight extracted from the event that produced it.
+
+ */
+export interface EphemeroiSourceState {
+  sourceId: number;
+  vector: EphemeroiStateAxes;
+  lastDelta: EphemeroiStateAxes;
+  lastInsight?: string | null;
+  lastEventObservationId?: number | null;
+  lastEventAt?: string | null;
+  updatedAt: string;
+}
+
+export interface EphemeroiSourceStatesResponse {
+  states: EphemeroiSourceState[];
+}
+
 export interface EphemeroiObservation {
   id: number;
   sourceId?: number | null;

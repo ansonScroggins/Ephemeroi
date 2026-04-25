@@ -131,6 +131,50 @@ export const ephemeroiContradictionsTable = pgTable(
   }),
 );
 
+/**
+ * Per-source 4D state vector — Capability, Integrity, Usability, Trust —
+ * each in [0,1]. Reflection emits a `stateDelta` per event when the
+ * observation actually moves the source's standing in those dimensions; the
+ * loop applies the delta (clamped) and stamps the moving event + the
+ * one-line "insight" extracted by the reflector. One row per source; we
+ * upsert in place rather than append so reads are cheap. Time-series
+ * history can be layered on later if we want sparklines.
+ */
+export const ephemeroiSourceStateTable = pgTable(
+  "ephemeroi_source_state",
+  {
+    id: serial("id").primaryKey(),
+    // FK-less integer to match the project convention (deleting a source
+    // doesn't cascade-delete its history).
+    sourceId: integer("source_id").notNull(),
+    capability: doublePrecision("capability").notNull().default(0.7),
+    integrity: doublePrecision("integrity").notNull().default(0.7),
+    usability: doublePrecision("usability").notNull().default(0.7),
+    trust: doublePrecision("trust").notNull().default(0.7),
+    lastDeltaCapability: doublePrecision("last_delta_capability")
+      .notNull()
+      .default(0),
+    lastDeltaIntegrity: doublePrecision("last_delta_integrity")
+      .notNull()
+      .default(0),
+    lastDeltaUsability: doublePrecision("last_delta_usability")
+      .notNull()
+      .default(0),
+    lastDeltaTrust: doublePrecision("last_delta_trust").notNull().default(0),
+    lastEventObservationId: integer("last_event_observation_id"),
+    lastInsight: text("last_insight"),
+    lastEventAt: timestamp("last_event_at", { withTimezone: true }),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    sourceIdUq: uniqueIndex("ephemeroi_source_state_source_id_uq").on(
+      t.sourceId,
+    ),
+  }),
+);
+
 export const ephemeroiReportsTable = pgTable(
   "ephemeroi_reports",
   {

@@ -19,6 +19,7 @@ import {
   getSettings,
   updateSettings,
   listSources,
+  listSourceStates,
   createSource,
   deleteSource,
   listRecentObservations,
@@ -35,6 +36,7 @@ import {
   contradictionToWire,
   reportToWire,
   sourceToWire,
+  sourceStateToWire,
   settingsToWire,
 } from "./wire";
 import { ephemeroiLoop, InFlightError } from "./loop";
@@ -126,6 +128,16 @@ router.get("/ephemeroi/sources", async (_req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /ephemeroi/sources failed");
     res.status(500).json({ error: "Failed to list sources" });
+  }
+});
+
+router.get("/ephemeroi/source-states", async (_req, res) => {
+  try {
+    const states = await listSourceStates();
+    res.json({ states: states.map(sourceStateToWire) });
+  } catch (err) {
+    logger.error({ err }, "GET /ephemeroi/source-states failed");
+    res.status(500).json({ error: "Failed to list source states" });
   }
 });
 

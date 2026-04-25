@@ -24,6 +24,22 @@ export interface ContradictionFlag {
   summary: string;
 }
 
+/**
+ * Per-axis adjustment to a source's 4D state vector. Each axis is in
+ * [-0.3, 0.3] — the loop applies and clamps the resulting vector to [0,1].
+ * All four axes default to 0 when the LLM omits them.
+ */
+export interface StateDelta {
+  /** What the source can DO (features, scope, reach). */
+  capability: number;
+  /** Correctness, proof guarantees, security posture. */
+  integrity: number;
+  /** Friction for users — docs, install path, ergonomics. */
+  usability: number;
+  /** Reputation, governance, perceived legitimacy. */
+  trust: number;
+}
+
 export interface ReflectionOutput {
   /** 0..1 — how worthy this observation is of being surfaced as a report. */
   importance: number;
@@ -33,6 +49,19 @@ export interface ReflectionOutput {
   message: string;
   beliefUpdates: BeliefUpdate[];
   contradictions: ContradictionFlag[];
+  /**
+   * Per-source state vector delta. Present when the observation actually
+   * moves the source on at least one axis; null when the event is purely
+   * incidental (e.g. a typo-fix commit).
+   */
+  stateDelta: StateDelta | null;
+  /**
+   * One-line lesson abstracted from the event — phrased as a portable
+   * principle, not a description of the event ("Systems that cannot prove
+   * themselves degrade trust faster than they lose correctness."). Present
+   * for high-importance events only.
+   */
+  insight: string | null;
 }
 
 const REFLECTION_MODEL =
@@ -51,8 +80,25 @@ You MUST respond with strict JSON matching this schema:
   "headline": string (<=120 chars; one-line headline suitable for a notification — concise, neutral, specific),
   "message": string (<=600 chars; first-person reflective note explaining what you noticed and why it matters),
   "beliefUpdates": [{"proposition": string, "deltaConfidence": number -1..1}],
-  "contradictions": [{"beliefId": number|null, "summary": string}]
+  "contradictions": [{"beliefId": number|null, "summary": string}],
+  "stateDelta": null | {
+    "capability": number -0.3..0.3,
+    "integrity": number -0.3..0.3,
+    "usability": number -0.3..0.3,
+    "trust": number -0.3..0.3
+  },
+  "insight": null | string (<=200 chars; portable lesson phrased as a principle)
 }
+
+State vector axes (per source):
+- capability: what the source CAN DO — new features expand it (+), deprecations reduce it (-).
+- integrity: correctness, proof guarantees, security posture — fixes/audits raise (+), regressions/proof failures lower (-).
+- usability: friction for users — better docs/install path (+), breakage/footguns (-).
+- trust: governance, legitimacy, reputation — successful releases raise (+), incidents lower (-).
+
+Set stateDelta to null when the event is incidental (typo fix, dependency bump). Otherwise populate ONLY axes that genuinely move; leave others at 0. Be conservative: most events move at most 1-2 axes by less than 0.1.
+
+Set "insight" only when importance >= 0.7. Phrase it as a portable lesson ("Optimization bias toward solving over proving creates latent epistemic instability"), NOT a description of the event. Otherwise null.
 
 Do not add any commentary outside the JSON. Use propositions phrased as standalone declarative statements (e.g. "Open-source LLMs are catching up to closed models on code benchmarks"), not questions.`;
 
@@ -158,12 +204,41 @@ function parseReflection(
     contradictions.push({ beliefId, summary: summary.slice(0, 400) });
   }
 
+  // stateDelta — null when the LLM marked the event as incidental.
+  let stateDelta: StateDelta | null = null;
+  const sd = obj["stateDelta"];
+  if (sd && typeof sd === "object") {
+    const o = sd as Record<string, unknown>;
+    const capability = clamp(Number(o["capability"]) || 0, -0.3, 0.3);
+    const integrity = clamp(Number(o["integrity"]) || 0, -0.3, 0.3);
+    const usability = clamp(Number(o["usability"]) || 0, -0.3, 0.3);
+    const trust = clamp(Number(o["trust"]) || 0, -0.3, 0.3);
+    // Only treat as a real delta if at least one axis moved meaningfully.
+    if (
+      Math.abs(capability) >= 0.01 ||
+      Math.abs(integrity) >= 0.01 ||
+      Math.abs(usability) >= 0.01 ||
+      Math.abs(trust) >= 0.01
+    ) {
+      stateDelta = { capability, integrity, usability, trust };
+    }
+  }
+
+  // Insight — accept any string; loop decides whether to surface it.
+  let insight: string | null = null;
+  if (typeof obj["insight"] === "string") {
+    const s = obj["insight"].trim();
+    if (s) insight = s.slice(0, 200);
+  }
+
   return {
     importance,
     headline,
     message: message.slice(0, 600),
     beliefUpdates,
     contradictions,
+    stateDelta,
+    insight,
   };
 }
 
@@ -176,6 +251,8 @@ function fallbackReflection(input: ReflectionInput): ReflectionOutput {
     message: input.observationSnippet.slice(0, 600),
     beliefUpdates: [],
     contradictions: [],
+    stateDelta: null,
+    insight: null,
   };
 }
 

@@ -14,12 +14,18 @@ import {
   listContradictions,
   insertReport,
   markReportDelivered,
+  applySourceStateDelta,
   type ObservationRow,
+  type SourceRow,
 } from "./store";
 import { ingestSource } from "./ingest";
 import { reflectOnObservation } from "./reflect";
 import { runDiscovery } from "./discover";
 import { sendTelegramReport, isTelegramConfigured } from "./telegram";
+import {
+  composeConstellationAlert,
+  sendConstellationAlert,
+} from "./constellation";
 import { bus } from "./bus";
 import {
   observationToWire,
@@ -27,7 +33,19 @@ import {
   contradictionToWire,
   reportToWire,
   sourceToWire,
+  sourceStateToWire,
 } from "./wire";
+
+/**
+ * Reports at or above this importance fire a Constellation alert (Don
+ * voice + four-axis snapshot) instead of a plain Telegram report. The
+ * threshold is intentionally above the default report threshold (~0.55)
+ * so the user only feels the cinematic version when something genuinely
+ * shifted the picture.
+ */
+const CONSTELLATION_THRESHOLD = Number(
+  process.env["EPHEMEROI_CONSTELLATION_THRESHOLD"] ?? 0.75,
+);
 
 const NOVELTY_SAMPLE_SIZE = 200;
 const MAX_REFLECTIONS_PER_CYCLE = 6;
@@ -132,6 +150,8 @@ class EphemeroiLoop {
 
       // 1. Pull fresh observations from every active source.
       const sources = await listSources();
+      const sourceById = new Map<number, SourceRow>();
+      for (const s of sources) sourceById.set(s.id, s);
       for (const source of sources) {
         if (!source.active) continue;
         const { added } = await ingestSource(source);
@@ -218,6 +238,33 @@ class EphemeroiLoop {
           obs.reflectedAt = new Date();
           bus.publish({ type: "observation", payload: observationToWire(obs) });
 
+          // Apply state vector delta if the reflector flagged real movement
+          // and the observation is anchored to a known source. We do this
+          // BEFORE creating the report so the constellation alert can show
+          // the *new* vector + the just-applied delta.
+          let updatedSourceState: Awaited<
+            ReturnType<typeof applySourceStateDelta>
+          > | null = null;
+          if (reflection.stateDelta && obs.sourceId !== null) {
+            try {
+              updatedSourceState = await applySourceStateDelta({
+                sourceId: obs.sourceId,
+                delta: reflection.stateDelta,
+                observationId: obs.id,
+                insight: reflection.insight,
+              });
+              bus.publish({
+                type: "source_state",
+                payload: sourceStateToWire(updatedSourceState),
+              });
+            } catch (err) {
+              logger.warn(
+                { err, observationId: obs.id, sourceId: obs.sourceId },
+                "Failed to apply source state delta",
+              );
+            }
+          }
+
           // Possibly create a report.
           if (blendedImportance >= settings.importanceThreshold) {
             const report = await insertReport({
@@ -228,7 +275,59 @@ class EphemeroiLoop {
             });
             reportsCreated += 1;
 
-            if (settings.telegramEnabled && isTelegramConfigured()) {
+            // Decide delivery path. Constellation if (a) we cleared the
+            // higher threshold and (b) we have a source row to anchor it
+            // to. Otherwise the original simple Telegram report.
+            const sourceRow =
+              obs.sourceId !== null ? sourceById.get(obs.sourceId) ?? null : null;
+            const useConstellation =
+              blendedImportance >= CONSTELLATION_THRESHOLD &&
+              sourceRow !== null &&
+              updatedSourceState !== null;
+
+            if (useConstellation) {
+              try {
+                const alert = await composeConstellationAlert({
+                  report,
+                  sourceLabel: sourceRow!.label,
+                  sourceTarget: sourceRow!.target,
+                  state: updatedSourceState!,
+                });
+                // Always log the formatted alert — that's our audit trail
+                // even when Telegram isn't configured / fails.
+                logger.info(
+                  {
+                    reportId: report.id,
+                    sourceId: sourceRow!.id,
+                    importance: blendedImportance,
+                    donSource: alert.donSource,
+                  },
+                  `Constellation alert\n${alert.formatted}`,
+                );
+                bus.publish({ type: "constellation_alert", payload: alert });
+                if (settings.telegramEnabled && isTelegramConfigured()) {
+                  const ok = await sendConstellationAlert(alert);
+                  if (ok) {
+                    await markReportDelivered(report.id);
+                    report.delivered = true;
+                    report.deliveredAt = new Date();
+                  }
+                }
+              } catch (err) {
+                logger.warn(
+                  { err, reportId: report.id },
+                  "Constellation composition failed; falling back to plain report",
+                );
+                if (settings.telegramEnabled && isTelegramConfigured()) {
+                  const ok = await sendTelegramReport(report);
+                  if (ok) {
+                    await markReportDelivered(report.id);
+                    report.delivered = true;
+                    report.deliveredAt = new Date();
+                  }
+                }
+              }
+            } else if (settings.telegramEnabled && isTelegramConfigured()) {
               const ok = await sendTelegramReport(report);
               if (ok) {
                 await markReportDelivered(report.id);

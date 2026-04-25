@@ -1,13 +1,16 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { 
   useListEphemeroiSources, 
+  useListEphemeroiSourceStates,
   useCreateEphemeroiSource, 
   useDeleteEphemeroiSource,
-  getListEphemeroiSourcesQueryKey
+  getListEphemeroiSourcesQueryKey,
+  type EphemeroiSourceState,
+  type EphemeroiStateAxes
 } from "@workspace/api-client-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { Radio, Search, Link as LinkIcon, Trash2, Plus, AlertCircle, RefreshCw, Github, Users, Sparkles } from "lucide-react";
+import { Radio, Search, Link as LinkIcon, Trash2, Plus, AlertCircle, RefreshCw, Github, Users, Sparkles, ArrowUp, ArrowDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -17,12 +20,77 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQueryClient } from "@tanstack/react-query";
 
+/**
+ * Per-source 4D state vector: 4 thin horizontal bars, each labelled with
+ * its first letter, plus a Δ arrow showing direction of the most recent
+ * move on that axis. This is intentionally compact — it's a glance, not
+ * a dashboard. Click-through to a full reading lives in the report flow.
+ */
+function StateMiniDisplay({ state }: { state: EphemeroiSourceState }) {
+  const axes: Array<{ key: keyof EphemeroiStateAxes; letter: string; label: string }> = [
+    { key: "capability", letter: "C", label: "Capability" },
+    { key: "integrity",  letter: "I", label: "Integrity" },
+    { key: "usability",  letter: "U", label: "Usability" },
+    { key: "trust",      letter: "T", label: "Trust" },
+  ];
+  return (
+    <div className="space-y-1.5" title={state.lastInsight ?? "no insight extracted yet"}>
+      {axes.map((a) => {
+        const v = state.vector[a.key];
+        const d = state.lastDelta[a.key];
+        const pct = Math.max(0, Math.min(1, v)) * 100;
+        const moved = Math.abs(d) >= 0.005;
+        const dir: "up" | "down" | "none" = moved ? (d > 0 ? "up" : "down") : "none";
+        return (
+          <div key={a.key} className="flex items-center gap-2 text-[10px] font-mono">
+            <span className="w-3 text-muted-foreground" title={a.label}>{a.letter}</span>
+            <div className="flex-1 h-1.5 bg-muted rounded-sm overflow-hidden">
+              <div
+                className={`h-full ${dir === "down" ? "bg-destructive/70" : "bg-primary/70"}`}
+                style={{ width: `${pct.toFixed(1)}%` }}
+              />
+            </div>
+            <span className="w-7 text-right text-muted-foreground">{Math.round(pct)}</span>
+            <span className="w-8 flex items-center justify-end gap-0.5">
+              {dir === "up" && (
+                <>
+                  <ArrowUp className="w-2.5 h-2.5 text-primary" />
+                  <span className="text-primary">{Math.round(d * 100)}</span>
+                </>
+              )}
+              {dir === "down" && (
+                <>
+                  <ArrowDown className="w-2.5 h-2.5 text-destructive" />
+                  <span className="text-destructive">{Math.round(d * 100)}</span>
+                </>
+              )}
+              {dir === "none" && <span className="text-muted-foreground/40">·</span>}
+            </span>
+          </div>
+        );
+      })}
+      {state.lastInsight && (
+        <p className="text-[10px] italic text-muted-foreground/80 pt-1 line-clamp-2">
+          “{state.lastInsight}”
+        </p>
+      )}
+    </div>
+  );
+}
+
 export default function Sources() {
   const queryClient = useQueryClient();
   const { data, isLoading } = useListEphemeroiSources();
+  const { data: statesData } = useListEphemeroiSourceStates();
   const createSource = useCreateEphemeroiSource();
   const deleteSource = useDeleteEphemeroiSource();
   const { toast } = useToast();
+
+  const stateBySourceId = useMemo(() => {
+    const m = new Map<number, EphemeroiSourceState>();
+    for (const s of statesData?.states ?? []) m.set(s.sourceId, s);
+    return m;
+  }, [statesData]);
 
   const [kind, setKind] = useState<"rss" | "url" | "search" | "github" | "github_user">("rss");
   const [target, setTarget] = useState("");
@@ -244,28 +312,41 @@ export default function Sources() {
                       </div>
                     </div>
                     
-                    <div className="p-4 md:border-l border-t md:border-t-0 border-border/50 bg-background/30 flex items-center justify-between md:justify-end gap-6 md:w-64">
-                      <div className="text-xs">
-                        <div className="text-muted-foreground mb-1">Last Polled</div>
-                        <div className="font-mono text-foreground">
-                          {source.lastPolledAt ? formatDistanceToNow(new Date(source.lastPolledAt)) + ' ago' : 'Never'}
-                        </div>
-                        {source.lastError && (
-                          <div className="text-destructive mt-1 flex items-center gap-1 line-clamp-1" title={source.lastError}>
-                            <AlertCircle className="w-3 h-3" /> Error
+                    <div className="p-4 md:border-l border-t md:border-t-0 border-border/50 bg-background/30 flex flex-col gap-3 md:w-72">
+                      {(() => {
+                        const st = stateBySourceId.get(source.id);
+                        return st ? (
+                          <StateMiniDisplay state={st} />
+                        ) : (
+                          <div className="text-[10px] font-mono text-muted-foreground/50 italic">
+                            no readings yet
                           </div>
-                        )}
+                        );
+                      })()}
+
+                      <div className="flex items-end justify-between gap-3 pt-1 border-t border-border/30">
+                        <div className="text-xs">
+                          <div className="text-muted-foreground mb-1">Last polled</div>
+                          <div className="font-mono text-foreground">
+                            {source.lastPolledAt ? formatDistanceToNow(new Date(source.lastPolledAt)) + ' ago' : 'Never'}
+                          </div>
+                          {source.lastError && (
+                            <div className="text-destructive mt-1 flex items-center gap-1 line-clamp-1" title={source.lastError}>
+                              <AlertCircle className="w-3 h-3" /> Error
+                            </div>
+                          )}
+                        </div>
+
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                          onClick={() => handleDelete(source.id)}
+                          disabled={deleteSource.isPending}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
                       </div>
-                      
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
-                        className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                        onClick={() => handleDelete(source.id)}
-                        disabled={deleteSource.isPending}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
                     </div>
                   </div>
                 </Card>

@@ -64,7 +64,7 @@ export default function Settings() {
 
   const handleRunCycle = async () => {
     try {
-      const res = await runCycle.mutateAsync({});
+      const res = await runCycle.mutateAsync();
       toast({ 
         title: "Cycle Complete", 
         description: `Observed ${res.observationsAdded}, Updated ${res.beliefsUpdated} beliefs.` 

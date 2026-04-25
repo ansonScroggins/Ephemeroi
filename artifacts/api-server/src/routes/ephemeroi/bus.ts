@@ -6,7 +6,9 @@ export type EphemeroiEventType =
   | "belief"
   | "contradiction"
   | "cycle"
-  | "source_auto_added";
+  | "source_auto_added"
+  | "source_state"
+  | "constellation_alert";
 
 export interface EphemeroiEvent {
   type: EphemeroiEventType;

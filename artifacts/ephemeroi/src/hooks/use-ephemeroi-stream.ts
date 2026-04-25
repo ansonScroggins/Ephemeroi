@@ -7,6 +7,7 @@ import {
   getListEphemeroiBeliefsQueryKey,
   getListEphemeroiContradictionsQueryKey,
   getListEphemeroiSourcesQueryKey,
+  getListEphemeroiSourceStatesQueryKey,
 } from "@workspace/api-client-react";
 import { useToast } from "@/hooks/use-toast";
 
@@ -47,6 +48,21 @@ export function useEphemeroiStream() {
           });
         } else if (data.type === "cycle") {
           queryClient.invalidateQueries({ queryKey: getGetEphemeroiStateQueryKey() });
+        } else if (data.type === "source_state") {
+          // A source's 4D vector just shifted from a reflection. Refresh
+          // the Sources page so the bars + arrows animate to the new
+          // position. No toast — these happen often and are cheap.
+          queryClient.invalidateQueries({ queryKey: getListEphemeroiSourceStatesQueryKey() });
+        } else if (data.type === "constellation_alert") {
+          // High-severity event; the Don narration was just composed.
+          // Even when Telegram delivery isn't configured, surface a
+          // toast so the user notices.
+          queryClient.invalidateQueries({ queryKey: getListEphemeroiSourceStatesQueryKey() });
+          queryClient.invalidateQueries({ queryKey: getListEphemeroiReportsQueryKey() });
+          toast({
+            title: `Constellation alert — ${data.payload?.sourceLabel ?? "a source"}`,
+            description: data.payload?.headline ?? "Something significant just shifted.",
+          });
         } else if (data.type === "source_auto_added") {
           // The bot added a new source on its own. Refresh the sources
           // list so it shows up immediately and tell the user why.

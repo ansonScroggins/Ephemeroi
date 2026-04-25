@@ -27,6 +27,7 @@ import type {
   EphemeroiSettingsUpdate,
   EphemeroiSource,
   EphemeroiSourceCreate,
+  EphemeroiSourceStatesResponse,
   EphemeroiSourcesResponse,
   EphemeroiState,
   ErrorResponse,
@@ -787,6 +788,90 @@ export const useDeleteEphemeroiSource = <
 > => {
   return useMutation(getDeleteEphemeroiSourceMutationOptions(options));
 };
+
+/**
+ * Returns one state row per source that has had at least one
+observation reflected upon, including the most recent delta
+applied and a short insight extracted from that event. Sources
+that have never been reflected on are omitted.
+
+ * @summary List per-source 4D state vectors (Capability/Integrity/Usability/Trust)
+ */
+export const getListEphemeroiSourceStatesUrl = () => {
+  return `/api/ephemeroi/source-states`;
+};
+
+export const listEphemeroiSourceStates = async (
+  options?: RequestInit,
+): Promise<EphemeroiSourceStatesResponse> => {
+  return customFetch<EphemeroiSourceStatesResponse>(
+    getListEphemeroiSourceStatesUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListEphemeroiSourceStatesQueryKey = () => {
+  return [`/api/ephemeroi/source-states`] as const;
+};
+
+export const getListEphemeroiSourceStatesQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEphemeroiSourceStates>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiSourceStates>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListEphemeroiSourceStatesQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEphemeroiSourceStates>>
+  > = ({ signal }) => listEphemeroiSourceStates({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiSourceStates>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEphemeroiSourceStatesQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEphemeroiSourceStates>>
+>;
+export type ListEphemeroiSourceStatesQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List per-source 4D state vectors (Capability/Integrity/Usability/Trust)
+ */
+
+export function useListEphemeroiSourceStates<
+  TData = Awaited<ReturnType<typeof listEphemeroiSourceStates>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiSourceStates>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEphemeroiSourceStatesQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
 
 /**
  * @summary List recent observations

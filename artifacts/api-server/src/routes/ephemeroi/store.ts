@@ -6,6 +6,7 @@ import {
   ephemeroiBeliefsTable,
   ephemeroiContradictionsTable,
   ephemeroiReportsTable,
+  ephemeroiSourceStateTable,
 } from "@workspace/db";
 import { eq, desc, asc, and, sql } from "drizzle-orm";
 
@@ -236,6 +237,153 @@ export async function countAutoAddedSources(): Promise<number> {
     .from(ephemeroiSourcesTable)
     .where(eq(ephemeroiSourcesTable.autoAdded, true));
   return rows[0]?.n ?? 0;
+}
+
+// ===== Source state vector (Capability/Integrity/Usability/Trust) =====
+
+export interface SourceStateRow {
+  id: number;
+  sourceId: number;
+  capability: number;
+  integrity: number;
+  usability: number;
+  trust: number;
+  lastDeltaCapability: number;
+  lastDeltaIntegrity: number;
+  lastDeltaUsability: number;
+  lastDeltaTrust: number;
+  lastEventObservationId: number | null;
+  lastInsight: string | null;
+  lastEventAt: Date | null;
+  updatedAt: Date;
+}
+
+const STATE_AXIS_DEFAULT = 0.7;
+
+function rowToSourceState(r: typeof ephemeroiSourceStateTable.$inferSelect): SourceStateRow {
+  return {
+    id: r.id,
+    sourceId: r.sourceId,
+    capability: r.capability,
+    integrity: r.integrity,
+    usability: r.usability,
+    trust: r.trust,
+    lastDeltaCapability: r.lastDeltaCapability,
+    lastDeltaIntegrity: r.lastDeltaIntegrity,
+    lastDeltaUsability: r.lastDeltaUsability,
+    lastDeltaTrust: r.lastDeltaTrust,
+    lastEventObservationId: r.lastEventObservationId,
+    lastInsight: r.lastInsight,
+    lastEventAt: r.lastEventAt,
+    updatedAt: r.updatedAt,
+  };
+}
+
+/**
+ * Read the current state vector for a source. Lazily inserts a default row
+ * (0.7 across the board — "neutral but tentatively trusted") on first read,
+ * so callers always get a row back. Race-safe via onConflictDoNothing then
+ * re-select.
+ */
+export async function getSourceState(
+  sourceId: number,
+): Promise<SourceStateRow> {
+  const existing = await db
+    .select()
+    .from(ephemeroiSourceStateTable)
+    .where(eq(ephemeroiSourceStateTable.sourceId, sourceId))
+    .limit(1);
+  if (existing.length > 0) return rowToSourceState(existing[0]!);
+  await db
+    .insert(ephemeroiSourceStateTable)
+    .values({
+      sourceId,
+      capability: STATE_AXIS_DEFAULT,
+      integrity: STATE_AXIS_DEFAULT,
+      usability: STATE_AXIS_DEFAULT,
+      trust: STATE_AXIS_DEFAULT,
+    })
+    .onConflictDoNothing();
+  const reread = await db
+    .select()
+    .from(ephemeroiSourceStateTable)
+    .where(eq(ephemeroiSourceStateTable.sourceId, sourceId))
+    .limit(1);
+  return rowToSourceState(reread[0]!);
+}
+
+/**
+ * Apply a per-axis delta to a source's state vector, clamped to [0,1] on
+ * each axis. Records the moving observation + the insight extracted by the
+ * reflector so the UI / Telegram can attribute the move. Returns the new
+ * state row.
+ */
+export async function applySourceStateDelta(input: {
+  sourceId: number;
+  delta: {
+    capability: number;
+    integrity: number;
+    usability: number;
+    trust: number;
+  };
+  observationId: number;
+  insight: string | null;
+}): Promise<SourceStateRow> {
+  // Ensure a row exists outside the tx so the FOR UPDATE lock has something
+  // to grab. getSourceState is itself race-safe via onConflictDoNothing.
+  await getSourceState(input.sourceId);
+
+  return await db.transaction(async (tx) => {
+    // Lock the row for the duration of the transaction so concurrent cycles
+    // (timer + manual /cycle/run) cannot lose updates via a read-modify-write
+    // race.
+    const locked = await tx
+      .select()
+      .from(ephemeroiSourceStateTable)
+      .where(eq(ephemeroiSourceStateTable.sourceId, input.sourceId))
+      .for("update")
+      .limit(1);
+    const current = rowToSourceState(locked[0]!);
+
+    const nextC = clamp(current.capability + input.delta.capability, 0, 1);
+    const nextI = clamp(current.integrity + input.delta.integrity, 0, 1);
+    const nextU = clamp(current.usability + input.delta.usability, 0, 1);
+    const nextT = clamp(current.trust + input.delta.trust, 0, 1);
+
+    // Record the actual applied delta (post-clamp), not the requested one,
+    // so the UI shows truthful arrows even when a vector is already at the
+    // edge of the [0,1] box.
+    const appliedC = nextC - current.capability;
+    const appliedI = nextI - current.integrity;
+    const appliedU = nextU - current.usability;
+    const appliedT = nextT - current.trust;
+
+    const updated = await tx
+      .update(ephemeroiSourceStateTable)
+      .set({
+        capability: nextC,
+        integrity: nextI,
+        usability: nextU,
+        trust: nextT,
+        lastDeltaCapability: appliedC,
+        lastDeltaIntegrity: appliedI,
+        lastDeltaUsability: appliedU,
+        lastDeltaTrust: appliedT,
+        lastEventObservationId: input.observationId,
+        lastInsight: input.insight,
+        lastEventAt: new Date(),
+        updatedAt: new Date(),
+      })
+      .where(eq(ephemeroiSourceStateTable.sourceId, input.sourceId))
+      .returning();
+    return rowToSourceState(updated[0]!);
+  });
+}
+
+/** All source states — used to hydrate the Sources page. */
+export async function listSourceStates(): Promise<SourceStateRow[]> {
+  const rows = await db.select().from(ephemeroiSourceStateTable);
+  return rows.map(rowToSourceState);
 }
 
 function deriveLabel(kind: SourceKind, target: string): string {

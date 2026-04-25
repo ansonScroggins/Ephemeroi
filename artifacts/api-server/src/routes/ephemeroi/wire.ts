@@ -4,6 +4,7 @@ import type {
   ContradictionRow,
   ReportRow,
   SourceRow,
+  SourceStateRow,
   SettingsRow,
 } from "./store";
 
@@ -132,6 +133,54 @@ export function sourceToWire(s: SourceRow): SourceWire {
     autoAddedReason: s.autoAddedReason,
     autoAddedAt: s.autoAddedAt ? s.autoAddedAt.toISOString() : null,
     createdAt: s.createdAt.toISOString(),
+  };
+}
+
+/**
+ * Per-source 4D state vector (Capability / Integrity / Usability / Trust)
+ * plus the most-recent delta vector and a one-line insight from the event
+ * that produced it. The Sources page renders this as a 4-bar mini-display
+ * with arrows showing direction of last move.
+ */
+export interface SourceStateWire {
+  sourceId: number;
+  vector: {
+    capability: number;
+    integrity: number;
+    usability: number;
+    trust: number;
+  };
+  lastDelta: {
+    capability: number;
+    integrity: number;
+    usability: number;
+    trust: number;
+  };
+  lastInsight: string | null;
+  lastEventObservationId: number | null;
+  lastEventAt: string | null;
+  updatedAt: string;
+}
+
+export function sourceStateToWire(s: SourceStateRow): SourceStateWire {
+  return {
+    sourceId: s.sourceId,
+    vector: {
+      capability: s.capability,
+      integrity: s.integrity,
+      usability: s.usability,
+      trust: s.trust,
+    },
+    lastDelta: {
+      capability: s.lastDeltaCapability,
+      integrity: s.lastDeltaIntegrity,
+      usability: s.lastDeltaUsability,
+      trust: s.lastDeltaTrust,
+    },
+    lastInsight: s.lastInsight,
+    lastEventObservationId: s.lastEventObservationId,
+    lastEventAt: s.lastEventAt ? s.lastEventAt.toISOString() : null,
+    updatedAt: s.updatedAt.toISOString(),
   };
 }
 

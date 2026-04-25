@@ -487,6 +487,66 @@ export const DeleteEphemeroiSourceParams = zod.object({
 });
 
 /**
+ * Returns one state row per source that has had at least one
+observation reflected upon, including the most recent delta
+applied and a short insight extracted from that event. Sources
+that have never been reflected on are omitted.
+
+ * @summary List per-source 4D state vectors (Capability/Integrity/Usability/Trust)
+ */
+export const ListEphemeroiSourceStatesResponse = zod.object({
+  states: zod.array(
+    zod
+      .object({
+        sourceId: zod.number(),
+        vector: zod
+          .object({
+            capability: zod
+              .number()
+              .describe("What the source CAN DO (features, scope, reach)."),
+            integrity: zod
+              .number()
+              .describe("Correctness, proof guarantees, security posture."),
+            usability: zod
+              .number()
+              .describe("Friction for users — docs, install path, ergonomics."),
+            trust: zod
+              .number()
+              .describe("Reputation, governance, perceived legitimacy."),
+          })
+          .describe(
+            "Per-axis values for a source's state vector. Each axis is in [0, 1]\n(for the absolute vector) or [-0.3, 0.3] (for a delta).\n",
+          ),
+        lastDelta: zod
+          .object({
+            capability: zod
+              .number()
+              .describe("What the source CAN DO (features, scope, reach)."),
+            integrity: zod
+              .number()
+              .describe("Correctness, proof guarantees, security posture."),
+            usability: zod
+              .number()
+              .describe("Friction for users — docs, install path, ergonomics."),
+            trust: zod
+              .number()
+              .describe("Reputation, governance, perceived legitimacy."),
+          })
+          .describe(
+            "Per-axis values for a source's state vector. Each axis is in [0, 1]\n(for the absolute vector) or [-0.3, 0.3] (for a delta).\n",
+          ),
+        lastInsight: zod.string().nullish(),
+        lastEventObservationId: zod.number().nullish(),
+        lastEventAt: zod.coerce.date().nullish(),
+        updatedAt: zod.coerce.date(),
+      })
+      .describe(
+        "Current 4D state vector for a source plus the most-recent delta and\nthe one-line insight extracted from the event that produced it.\n",
+      ),
+  ),
+});
+
+/**
  * @summary List recent observations
  */
 export const listEphemeroiObservationsQueryLimitDefault = 50;

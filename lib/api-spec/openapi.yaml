@@ -182,6 +182,23 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/source-states:
+    get:
+      operationId: listEphemeroiSourceStates
+      tags: [ephemeroi]
+      summary: List per-source 4D state vectors (Capability/Integrity/Usability/Trust)
+      description: |
+        Returns one state row per source that has had at least one
+        observation reflected upon, including the most recent delta
+        applied and a short insight extracted from that event. Sources
+        that have never been reflected on are omitted.
+      responses:
+        "200":
+          description: All source states
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSourceStatesResponse"
   /ephemeroi/observations:
     get:
       operationId: listEphemeroiObservations
@@ -777,6 +794,62 @@ components:
           items:
             $ref: "#/components/schemas/EphemeroiSource"
       required: [sources]
+
+    EphemeroiStateAxes:
+      type: object
+      description: |
+        Per-axis values for a source's state vector. Each axis is in [0, 1]
+        (for the absolute vector) or [-0.3, 0.3] (for a delta).
+      properties:
+        capability:
+          type: number
+          description: What the source CAN DO (features, scope, reach).
+        integrity:
+          type: number
+          description: Correctness, proof guarantees, security posture.
+        usability:
+          type: number
+          description: Friction for users — docs, install path, ergonomics.
+        trust:
+          type: number
+          description: Reputation, governance, perceived legitimacy.
+      required: [capability, integrity, usability, trust]
+
+    EphemeroiSourceState:
+      type: object
+      description: |
+        Current 4D state vector for a source plus the most-recent delta and
+        the one-line insight extracted from the event that produced it.
+      properties:
+        sourceId:
+          type: integer
+        vector:
+          $ref: "#/components/schemas/EphemeroiStateAxes"
+        lastDelta:
+          $ref: "#/components/schemas/EphemeroiStateAxes"
+        lastInsight:
+          type: string
+          nullable: true
+        lastEventObservationId:
+          type: integer
+          nullable: true
+        lastEventAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+      required: [sourceId, vector, lastDelta, updatedAt]
+
+    EphemeroiSourceStatesResponse:
+      type: object
+      properties:
+        states:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiSourceState"
+      required: [states]
 
     EphemeroiObservation:
       type: object
