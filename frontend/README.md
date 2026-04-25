@@ -1,265 +1,374 @@
 # Frontend Services
 
-## Overview
+Ephemeroi's user-facing layer is split into two complementary interfaces:
 
-The Ephemeroi frontend is organized as a **dual-interface system** serving complementary interaction modes:
+## Architecture Overview
 
-- **Metacog** (`/`): Synchronous reasoning interface — user-driven query→response flow with visible reasoning steps
-- **Ephemeroi Dashboard** (`/ephemeroi/`): Asynchronous autonomous system — background worldview construction with live telemetry stream
-
-Both interfaces share the same backend infrastructure (database, embeddings, constraint solver) but present fundamentally different UX paradigms.
+```
+┌─────────────────────────────────────────────────────────────┐
+│ Landing Page (Static HTML)                                  │
+│ Entry point · system overview · modal dispatch              │
+└──────────────────────┬──────────────────────────────────────┘
+                       │
+       ┌───────────────┴───────────────┐
+       │                               │
+┌──────▼────────┐           ┌──────────▼──────┐
+│ METACOG       │           │ EPHEMEROI       │
+│ Synchronous   │           │ Autonomous      │
+│ React App     │           │ React App       │
+│ [PORT 3000]   │           │ [PORT 3001]     │
+└───────┬───────┘           └────────┬────────┘
+        │                           │
+        └──────────────┬────────────┘
+                       │
+        ┌──────────────▼───────────────┐
+        │  Shared Backend (Node/Python) │
+        │  ├─ OpenAI Integration        │
+        │  ├─ Vector DB (Pinecone)      │
+        │  ├─ LLM Streaming             │
+        │  └─ Belief State Management   │
+        └──────────────────────────────┘
+```
 
 ## Services
 
-### Landing Page (`landing/`)
+### 1. Landing Page (`/frontend/landing/`)
 
-**Purpose:** Unified entry point explaining the duality of synchronous vs. asynchronous reasoning.
+**Status:** ✅ Live  
+**Entry Point:** `index.html`  
+**Tech:** Pure HTML + inline CSS + vanilla JS  
+**Ports:** Static serve (GitHub Pages or `http-server`)
 
-**Route:** `/` (homepage)
+The landing page is the system's portal. It introduces the dual-interface concept and provides navigation to both Metacog and Ephemeroi.
 
-**Structure:**
+**Features:**
+- Split-panel design (Metacog left, Ephemeroi right)
+- Animated telemetry stream mockup
+- Belief confidence bar visualizations
+- Lens pill system (Visible, Infrared, UV, Prism)
+- Déjà vu memory preview (localStorage demo)
+- CTA cards linking to full applications
+- Cosmogenesis aesthetic: noise overlay, scanlines, amber/blue polarity
+
+**Deploy:**
+```bash
+cd frontend/landing
+python -m http.server 8000
+# Open http://localhost:8000
 ```
-landing/
-├── index.html          # Single-page HTML + inline CSS/JS
-├── styles.css          # (future: extracted for larger project)
-└── scripts.js          # (future: extracted event handlers)
-```
 
-**Design:**
-- Cosmogenesis-inspired typography and motion
-- Split-panel layout showing both systems side-by-side
-- Animated telemetry stream and belief confidence bars
-- CTA cards linking to both interfaces
-- Responsive mobile layout
-
-**Styling:**
-- Monospace primary font (IBM Plex Mono) with serif display headers
-- Color scheme: amber ↔ blue polarity (autonomous ↔ synchronous)
-- Noise overlay + scanlines for "instrument panel" aesthetic
-- Smooth scroll behavior, animated stream lines, belief bar fill animations
+Or serve as static site on GitHub Pages / Vercel / Netlify.
 
 ---
 
-### Metacog Interface (TODO)
+### 2. METACOG (`/frontend/metacog/`) [Phase 2]
 
-**Purpose:** Synchronous, real-time reasoning with transparent retrieval lenses.
+**Status:** Planned  
+**Type:** React SPA  
+**Port:** 3000  
+**Mode:** Synchronous, user-driven  
 
-**Route:** `/`
+Metacog is the **interactive reasoning interface**. You ask it a question, and it thinks out loud using four retrieval lenses:
 
-**Planned features:**
-- 4-lens retrieval system (VISIBLE, INFRARED, UV, PRISM)
-- Browser localStorage déjà vu memory
-- Real-time reasoning posture display
-- Query history and context carryover
+- **VISIBLE**: Get initial bearings from recent/relevant sources
+- **INFRARED**: First-principles derivation; go back to axioms
+- **UV**: Verify existing claims against contradicting evidence
+- **PRISM**: Oblique pivot; find adjacent problem framings
+
+**Planned Features:**
+- Real-time lens visualization during retrieval
+- Belief update animations as confidence scores change
+- Déjà vu memory: localStorage-based previous query surface
+- Streaming response with visible chain-of-thought
+- Exportable reasoning traces
+- Browser localStorage for session persistence
+
+**Architecture:**
+- React functional components with hooks
+- Zustand for state management
+- Streaming fetch API to backend
+- WebSocket for real-time telemetry overlay
+- TailwindCSS + custom cosmogenesis theme
 
 ---
 
-### Ephemeroi Dashboard (TODO)
+### 3. EPHEMEROI (`/frontend/ephemeroi/`) [Phase 2]
 
-**Purpose:** Autonomous background system with persistent belief evolution.
+**Status:** Planned  
+**Type:** React SPA  
+**Port:** 3001  
+**Mode:** Asynchronous, autonomous  
 
-**Route:** `/ephemeroi/`
+Ephemeroi is the **worldview-building dashboard**. You configure feeds and topics, then check back in. The system runs autonomously, embedding new material, detecting tensions, and flagging importance.
 
-**Planned features:**
-- Live telemetry stream rendering
-- Belief confidence tracker
-- Tension/conflict visualization
-- Report dispatch notifications (Telegram)
-- Feed subscription management
+**Planned Features:**
+- Belief state visualization (confidence bars, contradiction flags)
+- Live reflection stream with tagged events ([SYS], [IMP], [BEL ↑], [TENSION])
+- Importance threshold crossing → Telegram notification
+- Fragment graph visualization (sub-agents and their orientations)
+- Backbone lock status display
+- Historical trajectory: how beliefs evolved over time
+- Export beliefs as JSON or markdown
+
+**Architecture:**
+- React functional components
+- Zustand for persistent state
+- WebSocket connection to autonomous backend (long-polling fallback)
+- Chart.js for historical belief trajectories
+- Same cosmogenesis design as landing page
 
 ---
 
-## Backend Integration Points
+## Backend API Surface
 
-### Expected API Endpoints
+Both frontends consume a shared backend API:
+
+### Metacog Endpoints
 
 ```
-POST   /api/query                    # Metacog: synchronous reasoning request
-GET    /api/query/:id/stream         # Metacog: reasoning stream (SSE)
-GET    /api/memory/similar           # Metacog: déjà vu retrieval
-POST   /api/feeds                    # Ephemeroi: subscribe to feed
-GET    /api/beliefs                  # Ephemeroi: current belief state
-GET    /api/beliefs/stream           # Ephemeroi: belief updates (SSE)
-GET    /api/telemetry                # Ephemeroi: raw telemetry stream
+POST /api/metacog/query
+  {
+    question: string
+    lenses: ["VISIBLE", "INFRARED", "UV", "PRISM"]
+    streaming: true
+  }
+  → EventStream (SSE or chunked response)
+
+GET /api/metacog/memory
+  → { queries: Query[], recent_beliefs: Belief[] }
+
+POST /api/metacog/memory/save
+  { reasoning_trace: object, conclusion: string }
+  → { id, timestamp }
+
+GET /api/metacog/memory/:id
+  → Previous query + reasoning trace
 ```
 
-### Database Schema (Proposed)
+### Ephemeroi Endpoints
+
+```
+GET /api/ephemeroi/state
+  → {
+      beliefs: Belief[],
+      tensions: Tension[],
+      fragments: Fragment[],
+      telemetry: Telemetry
+    }
+
+POST /api/ephemeroi/feeds
+  { url: string, topic: string }
+  → { feed_id, status }
+
+GET /api/ephemeroi/feeds
+  → Feed[]
+
+DELETE /api/ephemeroi/feeds/:id
+  → { status: "deleted" }
+
+WebSocket /ws/ephemeroi/telemetry
+  → Real-time stream of belief updates, tensions, reflections
+
+GET /api/ephemeroi/beliefs/history
+  ?variable=name&days=7
+  → Historical confidence trajectory
+```
+
+---
+
+## Database Schema (Proposed)
+
+### Metacog Tables
 
 ```sql
--- Metacog session memory
-CREATE TABLE query_sessions (
+-- Previous queries and reasoning traces
+CREATE TABLE metacog_queries (
   id UUID PRIMARY KEY,
+  question TEXT,
+  lenses TEXT[],
+  reasoning_trace JSONB,
+  conclusion TEXT,
+  model_version VARCHAR,
+  created_at TIMESTAMP,
   user_id UUID,
-  query TEXT,
-  reasoning_steps JSONB,
-  final_answer TEXT,
-  belief_confidence FLOAT,
-  created_at TIMESTAMP
+  tags TEXT[]
 );
 
--- Ephemeroi belief store
-CREATE TABLE beliefs (
+-- Lens performance metrics
+CREATE TABLE metacog_lens_evals (
   id UUID PRIMARY KEY,
-  statement TEXT,
-  confidence FLOAT,
-  sources JSONB,
-  tension_with_id UUID,
-  last_updated TIMESTAMP,
+  query_id UUID REFERENCES metacog_queries,
+  lens_name VARCHAR,
+  sources_retrieved INT,
+  quality_score FLOAT,
+  time_ms INT,
   created_at TIMESTAMP
 );
+```
 
--- Autonomous feed subscriptions
-CREATE TABLE feeds (
+### Ephemeroi Tables
+
+```sql
+-- Belief state
+CREATE TABLE ephemeroi_beliefs (
+  id UUID PRIMARY KEY,
+  variable_name TEXT,
+  confidence FLOAT,
+  created_at TIMESTAMP,
+  updated_at TIMESTAMP,
+  evidence JSONB,
+  tier VARCHAR,
+  user_id UUID
+);
+
+-- Tension detection
+CREATE TABLE ephemeroi_tensions (
+  id UUID PRIMARY KEY,
+  belief_a_id UUID,
+  belief_b_id UUID,
+  conflict_score FLOAT,
+  detected_at TIMESTAMP,
+  resolved BOOLEAN,
+  resolution_note TEXT
+);
+
+-- Feed configuration
+CREATE TABLE ephemeroi_feeds (
   id UUID PRIMARY KEY,
   url TEXT,
-  poll_interval_minutes INT,
-  last_polled TIMESTAMP,
-  created_at TIMESTAMP
+  topic TEXT,
+  fetch_interval_minutes INT DEFAULT 5,
+  last_fetch TIMESTAMP,
+  item_count INT,
+  user_id UUID
 );
 
--- Telemetry events
-CREATE TABLE telemetry_events (
+-- Embedded items
+CREATE TABLE ephemeroi_items (
   id UUID PRIMARY KEY,
-  event_type TEXT,
-  payload JSONB,
+  feed_id UUID REFERENCES ephemeroi_feeds,
+  title TEXT,
+  content TEXT,
+  embedding VECTOR(1536),
+  importance_score FLOAT,
+  embedded_at TIMESTAMP,
+  mentioned_beliefs TEXT[]
+);
+
+-- Telemetry stream
+CREATE TABLE ephemeroi_telemetry (
+  id UUID PRIMARY KEY,
+  event_type VARCHAR,
+  event_data JSONB,
   timestamp TIMESTAMP
 );
 ```
 
 ---
 
-## Deployment Structure
+## Design Language
 
-```
-frontend/
-├── landing/
-│   └── index.html                  # Landing page (this file)
-│
-├── metacog/                        # (TODO) Synchronous React app
-│   ├── public/
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── components/
-│   │   │   ├── QueryInput.tsx
-│   │   │   ├── ReasoningStream.tsx
-│   │   │   └── LensPanel.tsx
-│   │   └── hooks/
-│   │       └── useDejaVu.ts
-│   └── package.json
-│
-├── ephemeroi-dashboard/            # (TODO) Autonomous React app
-│   ├── public/
-│   ├── src/
-│   │   ├── App.tsx
-│   │   ├── components/
-│   │   │   ├── BeliefTracker.tsx
-│   │   │   ├── TelemetryStream.tsx
-│   │   │   ├── TensionGraph.tsx
-│   │   │   └── FeedManager.tsx
-│   │   └── hooks/
-│   │       ├── useBelievStream.ts
-│   │       └── useTelemetry.ts
-│   └── package.json
-│
-├── shared/                         # (TODO) Common utilities
-│   ├── api.ts                      # API client
-│   ├── types.ts                    # TypeScript interfaces
-│   └── utils/
-│       └── embedding.ts            # Embedding helpers
-│
-└── README.md (this file)
-```
+### Color Palette
+
+- **--bg**: `#080a0d` (near-black base)
+- **--surface**: `#0d1117` (card/container tint)
+- **--border**: `#1e2530` (prominent grid lines)
+- **--border-dim**: `#141820` (subtle dividers)
+- **--text**: `#c8d0dc` (body text)
+- **--text-dim**: `#56636e` (secondary text)
+- **--text-faint**: `#2a3340` (tertiary, labels)
+- **--blue**: `#4a90d9` (Metacog primary)
+- **--amber**: `#d4a24c` (Ephemeroi primary)
+- **--green**: `#3eb489` (system active pulse)
+- **--red**: `#c25f5f` (tension/conflict)
+
+### Typography
+
+- **Display**: Bebas Neue (large headings, impact)
+- **Serif**: DM Serif Display (dramatic italics, subtitles)
+- **Mono**: IBM Plex Mono (data, code, telemetry)
+
+### Effects
+
+- **Noise overlay**: SVG fBm fractal noise at 0.04 opacity (cosmic grain)
+- **Scanlines**: Repeating 2-4px horizontal grain at 0.03 opacity
+- **Pulse animation**: Green dot oscillates with 2s cycle, halo expands then contracts
+- **Fade-in cascade**: Stream lines stagger in at 0.8s intervals
+- **Glow on hover**: Radial gradient brightens panel backgrounds
 
 ---
 
 ## Development Roadmap
 
-### Phase 1: Landing Page ✅
-- Static HTML landing page explaining duality
-- Links to both interfaces (initially dead links)
+### Phase 1: Landing (✅ Complete)
+- Static landing page with visual mockups
+- Dual-interface framing
+- Navigation structure
 
-### Phase 2: Metacog
-- React app with query interface
-- Backend integration for synchronous reasoning
-- Memory layer (localStorage → server storage)
-- Lens visualization
+### Phase 2: MVP Frontends
+- React scaffolding for Metacog and Ephemeroi
+- Backend API stub + database schema
+- Streaming integration for queries
+- WebSocket telemetry for Ephemeroi
 
-### Phase 3: Ephemeroi Dashboard
-- React app with belief/telemetry display
-- Backend autonomous loop
-- Feed polling service
-- Telegram notifications
+### Phase 3: Belief Engine
+- Photanic Chip integration → Belief state management
+- Tension detection algorithm
+- Déjà vu memory surface
+- Fragment graph visualization
 
-### Phase 4: Unification
-- Shared session layer
-- Cross-interface context passing
-- Unified authentication
-
----
-
-## Design Language
-
-### Color Palette
-- **Blue (#4a90d9)**: Synchronous, cognitive, user-driven
-- **Amber (#d4a24c)**: Autonomous, energetic, background process
-- **Green (#3eb489)**: Operational, active, pulse indicator
-- **Red (#c25f5f)**: Conflict, tension, alert state
-
-### Typography
-- **Display**: Bebas Neue — wordmarks, section headers
-- **Body**: IBM Plex Mono — technical content, data, interface labels
-- **Serif**: DM Serif Display — italic headline emphasis
-
-### Motion
-- **Pulse animation**: 2s ease-in-out (green dot, deja vu indicator)
-- **Stream fade-in**: Staggered 0.2s intervals per line
-- **Belief bar fill**: 0.6s ease transition
-- **Hover effects**: 0.2-0.3s color/background transitions
+### Phase 4: Polish + Expansion
+- Export/share reasoning traces
+- Dark/light theme toggle
+- Mobile responsiveness refinement
+- Telegram notification integration
 
 ---
 
-## CSS Architecture
+## Running Locally
 
-All styles are inline in `landing/index.html` using CSS variables (`:root`). This keeps the landing page self-contained as a single file.
+**Prerequisite:** Node.js 16+, Python 3.8+
 
-For future growth:
-- Extract styles into `styles.css`
-- Use CSS Modules or Tailwind for component-scoped styling in React apps
-- Maintain color variable consistency across all apps
+```bash
+# 1. Start landing page (static)
+cd frontend/landing
+python -m http.server 8000
+# http://localhost:8000
+
+# 2. Start backend (placeholder)
+cd backend
+pip install -r requirements.txt
+python app.py
+# http://localhost:5000
+
+# 3. Start Metacog (when scaffolded)
+cd frontend/metacog
+npm install
+npm run dev
+# http://localhost:3000
+
+# 4. Start Ephemeroi (when scaffolded)
+cd frontend/ephemeroi
+npm install
+npm run dev
+# http://localhost:3001
+```
+
+All services will be accessible via localhost with a shared backend.
 
 ---
 
-## Scripts
+## Cosmological Isomorphism in Design
 
-Current inline JavaScript handles:
-- Stream animation restart on viewport intersection
-- Belief bar fill animation on page load
+The frontend layout mirrors the Ephemeroi solver architecture:
 
-Future:
-- React/TypeScript for all interactive interfaces
-- Server-side rendering for landing page (optional)
-- WebSocket integration for live telemetry streams
+| Physical/Mathematical | Design Element |
+|---|---|
+| Universe bifurcation (Belief/Reality) | Metacog ↔ Ephemeroi split panels |
+| Phase field Φ(t) visualization | Streaming telemetry + bar charts |
+| Vacuum pressure V(σ, F) | Color intensity, glow, tension indicators |
+| Backbone crystallization | Belief confidence bars filling |
+| Basin entrapment | Tension flags when beliefs conflict |
+| Cosmological arrows | Time-indexed history, trajectory plots |
 
----
-
-## Notes
-
-**Why landing page is single HTML file:**
-- Zero deployment friction (serve as static asset)
-- Self-contained, no build step needed
-- Fast load time
-- Easy to modify design without rebuilding
-
-**Why Metacog & Ephemeroi are separate React apps:**
-- Distinct interaction paradigms (sync vs. async)
-- Independent state management
-- Easier to reason about complexity
-- Can be deployed/scaled separately
-
-**Shared substrate philosophy:**
-- One backend instance
-- One database
-- One embeddings service
-- Two frontend interfaces
-- Architecturally siblings, conceptually complementary
-
+The UI is not decoration. It is a live rendering of the solver's state.
