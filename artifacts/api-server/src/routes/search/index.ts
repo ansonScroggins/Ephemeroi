@@ -593,9 +593,10 @@ function detectGithubRef(text: string): GhRef | null {
     const parsed = parseRepoTarget(prefix[1]!);
     if (parsed) return parsed;
   }
-  // 2. plain "owner/repo" — only accept ones that contain a hyphen, dot, or
-  // an obvious project-name segment, to avoid matching pairs like "and/or".
-  // Also require at least one of owner/repo to be at least 3 chars.
+  // 2. plain "owner/repo". We're permissive on detection (filter only the
+  // most obvious false-positive pairs and length-2 stubs); fetchGithubContext()
+  // gates by hitting the GitHub API and returning null on 404, so a wrong
+  // guess costs one extra API call rather than producing a bogus retrieve step.
   const matches = text.matchAll(/(?:^|[\s(`"'])([\w][\w.-]{0,38})\/([\w][\w.-]{0,38})(?=[\s)`"'.,!?]|$)/g);
   for (const m of matches) {
     const owner = m[1]!;
@@ -604,10 +605,6 @@ function detectGithubRef(text: string): GhRef | null {
     if (STOPWORD_OWNER_REPO.has(candidate)) continue;
     if (owner.length < 2 || repo.length < 2) continue;
     if (owner.length < 3 && repo.length < 3) continue;
-    // Filter common false positives: pure "word/word" with no separators is
-    // suspicious unless one side is clearly a project name (has hyphen/dot/digit).
-    const looksLikeProject = /[-_.\d]/.test(owner) || /[-_.\d]/.test(repo);
-    if (!looksLikeProject) continue;
     const parsed = parseRepoTarget(`${owner}/${repo}`);
     if (parsed) return parsed;
   }
