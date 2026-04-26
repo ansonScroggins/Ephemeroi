@@ -4,10 +4,11 @@ import {
   useUpdateEphemeroiSettings,
   useRunEphemeroiCycle,
   useRunEphemeroiSelfImprovement,
+  useRunEphemeroiBiomimetic,
   getGetEphemeroiSettingsQueryKey
 } from "@workspace/api-client-react";
 import { motion } from "framer-motion";
-import { Save, Play, Settings2, Bell, Brain, Clock, Zap, Sparkles, Wrench } from "lucide-react";
+import { Save, Play, Settings2, Bell, Brain, Clock, Zap, Sparkles, Wrench, Dna } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -24,6 +25,7 @@ export default function Settings() {
   const updateSettings = useUpdateEphemeroiSettings();
   const runCycle = useRunEphemeroiCycle();
   const selfImprove = useRunEphemeroiSelfImprovement();
+  const biomimetic = useRunEphemeroiBiomimetic();
 
   // Local state for optimistic UI before save
   const [local, setLocal] = useState({
@@ -76,6 +78,18 @@ export default function Settings() {
     }
   };
 
+  const handleBiomimetic = async () => {
+    try {
+      const res = await biomimetic.mutateAsync({ data: {} });
+      toast({
+        title: res.solved ? "Biomimetic: SOLVED" : "Biomimetic: timeout",
+        description: `${res.steps} steps · ${res.cageEvents} cage event(s) · ${res.edictCount} edict(s) · ${res.finalUnsat} unsat`,
+      });
+    } catch (err) {
+      toast({ title: "Biomimetic run failed", variant: "destructive" });
+    }
+  };
+
   const handleSelfImprove = async () => {
     try {
       const res = await selfImprove.mutateAsync();
@@ -113,6 +127,16 @@ export default function Settings() {
           <p className="text-muted-foreground">Tune the observer's cognitive parameters.</p>
         </div>
         <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="bg-card/40 text-foreground border-border/60 hover:bg-card/70"
+            onClick={handleBiomimetic}
+            disabled={biomimetic.isPending}
+            title="Run one pass of the v0.11.3 biomimetic constraint-field protocol on a synthetic 3-SAT problem. Telemetry to SSE, Don narration on cage."
+          >
+            <Dna className={`w-4 h-4 mr-2 ${biomimetic.isPending ? 'animate-pulse' : ''}`} />
+            {biomimetic.isPending ? "Solving…" : "Biomimetic"}
+          </Button>
           <Button
             variant="outline"
             className="bg-card/40 text-foreground border-border/60 hover:bg-card/70"

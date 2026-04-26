@@ -320,6 +320,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/biomimetic:
+    post:
+      operationId: runEphemeroiBiomimetic
+      tags: [ephemeroi]
+      summary: Run one pass of the v0.11.3 Biomimetic constraint-field protocol
+      description: |
+        Generates a small synthetic 3-SAT problem at the phase-transition
+        ratio and runs the biomimetic protocol against it: spliceosome step
+        (flip introns / stabilize exons), pressure flow, Cyrus Edict on
+        cage detection, and invariant enforcement. Telemetry events flow
+        to the SSE bus as `constellation_alert` events; on cage detection
+        a Don/Wife/Son narration is generated and the run summary is sent
+        to Telegram (if configured).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EphemeroiBiomimeticOptions"
+      responses:
+        "200":
+          description: Result of the protocol run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiBiomimeticResult"
+
   /ephemeroi/self-improve:
     post:
       operationId: runEphemeroiSelfImprovement
@@ -1070,6 +1097,69 @@ components:
         durationMs:
           type: integer
       required: [observationsAdded, beliefsUpdated, contradictionsFound, reportsCreated, autoSourcesAdded, ranAt, durationMs]
+
+    EphemeroiBiomimeticOptions:
+      type: object
+      description: All fields optional — the route picks sensible defaults so an empty body works. All numeric fields are bounded to keep the public endpoint from being weaponised into a hang or a CPU sink.
+      properties:
+        n:
+          type: integer
+          minimum: 3
+          maximum: 256
+          description: Number of variables in the synthetic 3-SAT problem (must be ≥ 3 since each clause needs three distinct literals).
+        ratio:
+          type: number
+          minimum: 1
+          maximum: 10
+          description: Clause/variable ratio (default ~4.27, the 3-SAT phase transition).
+        maxSteps:
+          type: integer
+          minimum: 1
+          maximum: 2000
+          description: Hard cap on outer steps before declaring timeout.
+        seed:
+          type: integer
+          description: Deterministic RNG seed.
+
+    EphemeroiBiomimeticStepEvent:
+      type: object
+      properties:
+        step: { type: integer }
+        unsat: { type: integer }
+        consensusMean: { type: number }
+        pressureVariance: { type: number }
+        cageDetected: { type: boolean }
+        edictTriggered: { type: boolean }
+        edictCascadeDepth: { type: integer }
+        intronsFlipped: { type: integer }
+        exonsReinforced: { type: integer }
+        invariantViolations:
+          type: array
+          items: { type: string }
+      required: [step, unsat, consensusMean, pressureVariance, cageDetected, edictTriggered, edictCascadeDepth, intronsFlipped, exonsReinforced, invariantViolations]
+
+    EphemeroiBiomimeticResult:
+      type: object
+      description: Outcome of one biomimetic protocol run.
+      properties:
+        solved: { type: boolean }
+        finalUnsat: { type: integer }
+        steps: { type: integer }
+        edictCount: { type: integer }
+        cageEvents: { type: integer }
+        invariantViolations: { type: integer }
+        timeline:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiBiomimeticStepEvent"
+        donNarration:
+          type: string
+          nullable: true
+        formatted: { type: string }
+        n: { type: integer }
+        m: { type: integer }
+        durationMs: { type: integer }
+      required: [solved, finalUnsat, steps, edictCount, cageEvents, invariantViolations, timeline, donNarration, formatted, n, m, durationMs]
 
     EphemeroiSelfImprovementResult:
       type: object

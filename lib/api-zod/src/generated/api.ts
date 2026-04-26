@@ -773,6 +773,84 @@ export const RunEphemeroiCycleResponse = zod.object({
 });
 
 /**
+ * Generates a small synthetic 3-SAT problem at the phase-transition
+ratio and runs the biomimetic protocol against it: spliceosome step
+(flip introns / stabilize exons), pressure flow, Cyrus Edict on
+cage detection, and invariant enforcement. Telemetry events flow
+to the SSE bus as `constellation_alert` events; on cage detection
+a Don/Wife/Son narration is generated and the run summary is sent
+to Telegram (if configured).
+
+ * @summary Run one pass of the v0.11.3 Biomimetic constraint-field protocol
+ */
+export const runEphemeroiBiomimeticBodyNMin = 3;
+export const runEphemeroiBiomimeticBodyNMax = 256;
+
+export const runEphemeroiBiomimeticBodyRatioMax = 10;
+
+export const runEphemeroiBiomimeticBodyMaxStepsMax = 2000;
+
+export const RunEphemeroiBiomimeticBody = zod
+  .object({
+    n: zod
+      .number()
+      .min(runEphemeroiBiomimeticBodyNMin)
+      .max(runEphemeroiBiomimeticBodyNMax)
+      .optional()
+      .describe(
+        "Number of variables in the synthetic 3-SAT problem (must be ≥ 3 since each clause needs three distinct literals).",
+      ),
+    ratio: zod
+      .number()
+      .min(1)
+      .max(runEphemeroiBiomimeticBodyRatioMax)
+      .optional()
+      .describe(
+        "Clause\/variable ratio (default ~4.27, the 3-SAT phase transition).",
+      ),
+    maxSteps: zod
+      .number()
+      .min(1)
+      .max(runEphemeroiBiomimeticBodyMaxStepsMax)
+      .optional()
+      .describe("Hard cap on outer steps before declaring timeout."),
+    seed: zod.number().optional().describe("Deterministic RNG seed."),
+  })
+  .describe(
+    "All fields optional — the route picks sensible defaults so an empty body works. All numeric fields are bounded to keep the public endpoint from being weaponised into a hang or a CPU sink.",
+  );
+
+export const RunEphemeroiBiomimeticResponse = zod
+  .object({
+    solved: zod.boolean(),
+    finalUnsat: zod.number(),
+    steps: zod.number(),
+    edictCount: zod.number(),
+    cageEvents: zod.number(),
+    invariantViolations: zod.number(),
+    timeline: zod.array(
+      zod.object({
+        step: zod.number(),
+        unsat: zod.number(),
+        consensusMean: zod.number(),
+        pressureVariance: zod.number(),
+        cageDetected: zod.boolean(),
+        edictTriggered: zod.boolean(),
+        edictCascadeDepth: zod.number(),
+        intronsFlipped: zod.number(),
+        exonsReinforced: zod.number(),
+        invariantViolations: zod.array(zod.string()),
+      }),
+    ),
+    donNarration: zod.string().nullable(),
+    formatted: zod.string(),
+    n: zod.number(),
+    m: zod.number(),
+    durationMs: zod.number(),
+  })
+  .describe("Outcome of one biomimetic protocol run.");
+
+/**
  * Reads the bot's whitelisted route files, asks the LLM for one focused
 substantive patch (bug fix, missed edge case, clarity win), applies it,
 re-runs the bundler to verify it compiles, then pings Telegram with the

@@ -564,6 +564,63 @@ export interface EphemeroiCycleResult {
 }
 
 /**
+ * All fields optional — the route picks sensible defaults so an empty body works. All numeric fields are bounded to keep the public endpoint from being weaponised into a hang or a CPU sink.
+ */
+export interface EphemeroiBiomimeticOptions {
+  /**
+   * Number of variables in the synthetic 3-SAT problem (must be ≥ 3 since each clause needs three distinct literals).
+   * @minimum 3
+   * @maximum 256
+   */
+  n?: number;
+  /**
+   * Clause/variable ratio (default ~4.27, the 3-SAT phase transition).
+   * @minimum 1
+   * @maximum 10
+   */
+  ratio?: number;
+  /**
+   * Hard cap on outer steps before declaring timeout.
+   * @minimum 1
+   * @maximum 2000
+   */
+  maxSteps?: number;
+  /** Deterministic RNG seed. */
+  seed?: number;
+}
+
+export interface EphemeroiBiomimeticStepEvent {
+  step: number;
+  unsat: number;
+  consensusMean: number;
+  pressureVariance: number;
+  cageDetected: boolean;
+  edictTriggered: boolean;
+  edictCascadeDepth: number;
+  intronsFlipped: number;
+  exonsReinforced: number;
+  invariantViolations: string[];
+}
+
+/**
+ * Outcome of one biomimetic protocol run.
+ */
+export interface EphemeroiBiomimeticResult {
+  solved: boolean;
+  finalUnsat: number;
+  steps: number;
+  edictCount: number;
+  cageEvents: number;
+  invariantViolations: number;
+  timeline: EphemeroiBiomimeticStepEvent[];
+  donNarration: string | null;
+  formatted: string;
+  n: number;
+  m: number;
+  durationMs: number;
+}
+
+/**
  * Outcome of one self-improvement attempt.
  */
 export interface EphemeroiSelfImprovementResult {

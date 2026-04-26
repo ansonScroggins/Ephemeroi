@@ -19,6 +19,8 @@ import type {
 import type {
   EphemeroiBeliefsBySourceResponse,
   EphemeroiBeliefsResponse,
+  EphemeroiBiomimeticOptions,
+  EphemeroiBiomimeticResult,
   EphemeroiContradictionsResponse,
   EphemeroiCycleResult,
   EphemeroiObservationsResponse,
@@ -1433,6 +1435,104 @@ export const useRunEphemeroiCycle = <
   TContext
 > => {
   return useMutation(getRunEphemeroiCycleMutationOptions(options));
+};
+
+/**
+ * Generates a small synthetic 3-SAT problem at the phase-transition
+ratio and runs the biomimetic protocol against it: spliceosome step
+(flip introns / stabilize exons), pressure flow, Cyrus Edict on
+cage detection, and invariant enforcement. Telemetry events flow
+to the SSE bus as `constellation_alert` events; on cage detection
+a Don/Wife/Son narration is generated and the run summary is sent
+to Telegram (if configured).
+
+ * @summary Run one pass of the v0.11.3 Biomimetic constraint-field protocol
+ */
+export const getRunEphemeroiBiomimeticUrl = () => {
+  return `/api/ephemeroi/biomimetic`;
+};
+
+export const runEphemeroiBiomimetic = async (
+  ephemeroiBiomimeticOptions?: EphemeroiBiomimeticOptions,
+  options?: RequestInit,
+): Promise<EphemeroiBiomimeticResult> => {
+  return customFetch<EphemeroiBiomimeticResult>(
+    getRunEphemeroiBiomimeticUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(ephemeroiBiomimeticOptions),
+    },
+  );
+};
+
+export const getRunEphemeroiBiomimeticMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runEphemeroiBiomimetic>>,
+    TError,
+    { data: BodyType<EphemeroiBiomimeticOptions> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runEphemeroiBiomimetic>>,
+  TError,
+  { data: BodyType<EphemeroiBiomimeticOptions> },
+  TContext
+> => {
+  const mutationKey = ["runEphemeroiBiomimetic"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runEphemeroiBiomimetic>>,
+    { data: BodyType<EphemeroiBiomimeticOptions> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return runEphemeroiBiomimetic(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunEphemeroiBiomimeticMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runEphemeroiBiomimetic>>
+>;
+export type RunEphemeroiBiomimeticMutationBody =
+  BodyType<EphemeroiBiomimeticOptions>;
+export type RunEphemeroiBiomimeticMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Run one pass of the v0.11.3 Biomimetic constraint-field protocol
+ */
+export const useRunEphemeroiBiomimetic = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runEphemeroiBiomimetic>>,
+    TError,
+    { data: BodyType<EphemeroiBiomimeticOptions> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runEphemeroiBiomimetic>>,
+  TError,
+  { data: BodyType<EphemeroiBiomimeticOptions> },
+  TContext
+> => {
+  return useMutation(getRunEphemeroiBiomimeticMutationOptions(options));
 };
 
 /**

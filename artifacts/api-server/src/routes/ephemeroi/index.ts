@@ -15,8 +15,11 @@ import {
   ListEphemeroiReportsResponse,
   RunEphemeroiCycleResponse,
   RunEphemeroiSelfImprovementResponse,
+  RunEphemeroiBiomimeticBody,
+  RunEphemeroiBiomimeticResponse,
 } from "@workspace/api-zod";
 import { runSelfImprovement, SelfImproveInFlightError } from "./selfImprove";
+import { runBiomimetic } from "./biomimetic";
 import {
   getSettings,
   updateSettings,
@@ -384,6 +387,30 @@ router.post("/ephemeroi/cycle/run", async (_req, res) => {
 // The change won't take effect until the api-server process is restarted —
 // the Telegram message says so explicitly. If the patched code fails to
 // build, the original is restored automatically and the failure is reported.
+router.post("/ephemeroi/biomimetic", async (req, res) => {
+  // Parse first; a zod failure here is a client error (400), not a 500.
+  const parsed = RunEphemeroiBiomimeticBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "invalid_body",
+      issues: parsed.error.issues.map((i) => ({
+        path: i.path.join("."),
+        message: i.message,
+      })),
+    });
+    return;
+  }
+  try {
+    const result = await runBiomimetic(parsed.data);
+    res.json(RunEphemeroiBiomimeticResponse.parse(result));
+  } catch (err) {
+    logger.error({ err }, "POST /ephemeroi/biomimetic failed");
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
 router.post("/ephemeroi/self-improve", async (_req, res) => {
   try {
     const result = await runSelfImprovement();
