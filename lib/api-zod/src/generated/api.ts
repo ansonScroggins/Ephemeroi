@@ -967,6 +967,46 @@ export const RunEphemeroiBiomimeticResponse = zod
   .describe("Outcome of one biomimetic protocol run.");
 
 /**
+ * Accepts a `SignalEnvelope` POSTed from another site (currently Metacog
+when it runs out of process). The envelope is validated and re-published
+on the in-process signal bus, so the unified Telegram convergence
+layer routes it identically to in-process signals — picking up the
+`[Origin · role]` badge and participating in cross-limb merge/correlation.
+
+**Auth.** Requires the `x-ephemeroi-signal-secret` header to match the
+`EPHEMEROI_SIGNAL_SECRET` env var. If the env var is unset the endpoint
+returns 503 — same-process Metacog adapters publish directly to the
+bus, so no inbound HTTP is needed in the default deployment.
+
+ * @summary Inbound cross-site signal envelope
+ */
+export const PostEphemeroiSignalHeader = zod.object({
+  "x-ephemeroi-signal-secret": zod
+    .string()
+    .describe("Shared secret matched against `EPHEMEROI_SIGNAL_SECRET`."),
+});
+
+export const postEphemeroiSignalBodySeverityMin = 0;
+export const postEphemeroiSignalBodySeverityMax = 1;
+
+export const PostEphemeroiSignalBody = zod
+  .object({
+    origin: zod.enum(["metacog", "ephemeroi"]),
+    role: zod.enum(["structural", "truth-anchor", "exploration"]),
+    severity: zod
+      .number()
+      .min(postEphemeroiSignalBodySeverityMin)
+      .max(postEphemeroiSignalBodySeverityMax),
+    headline: zod.string(),
+    body: zod.string(),
+    subject: zod.string().optional(),
+    evidence: zod.record(zod.string(), zod.unknown()).optional(),
+  })
+  .describe(
+    "Shared envelope for cross-site signals between Ephemeroi (structural)\nand Metacog (truth-anchor \/ exploration). Consumed by the unified\nTelegram convergence layer.\n",
+  );
+
+/**
  * Reads the bot's whitelisted route files, asks the LLM for one focused
 substantive patch (bug fix, missed edge case, clarity win), applies it,
 re-runs the bundler to verify it compiles, then pings Telegram with the

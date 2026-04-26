@@ -366,6 +366,35 @@ export interface ExplorationResponse {
   notes: string;
 }
 
+export type EphemeroiSignalAcceptedOrigin =
+  (typeof EphemeroiSignalAcceptedOrigin)[keyof typeof EphemeroiSignalAcceptedOrigin];
+
+export const EphemeroiSignalAcceptedOrigin = {
+  metacog: "metacog",
+  ephemeroi: "ephemeroi",
+} as const;
+
+export type EphemeroiSignalAcceptedRole =
+  (typeof EphemeroiSignalAcceptedRole)[keyof typeof EphemeroiSignalAcceptedRole];
+
+export const EphemeroiSignalAcceptedRole = {
+  structural: "structural",
+  "truth-anchor": "truth-anchor",
+  exploration: "exploration",
+} as const;
+
+/**
+ * Acknowledgement that an inbound signal envelope was validated and
+re-published on the signal bus. Telegram delivery happens
+asynchronously through the convergence subscriber.
+
+ */
+export interface EphemeroiSignalAccepted {
+  accepted: boolean;
+  origin: EphemeroiSignalAcceptedOrigin;
+  role: EphemeroiSignalAcceptedRole;
+}
+
 export interface SampleQuery {
   id: string;
   label: string;

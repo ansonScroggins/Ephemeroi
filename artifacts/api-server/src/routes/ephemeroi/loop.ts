@@ -22,11 +22,9 @@ import { ingestSource } from "./ingest";
 import { reflectOnObservation } from "./reflect";
 import { runDiscovery } from "./discover";
 import { sendTelegramReport, isTelegramConfigured } from "./telegram";
-import {
-  composeConstellationAlert,
-  sendConstellationAlert,
-} from "./constellation";
+import { composeConstellationAlert } from "./constellation";
 import { bus } from "./bus";
+import { publishSignal } from "../../lib/signal-envelope";
 import {
   observationToWire,
   beliefToWire,
@@ -332,9 +330,34 @@ class EphemeroiLoop {
                   `Constellation alert\n${alert.formatted}`,
                 );
                 bus.publish({ type: "constellation_alert", payload: alert });
-                if (settings.telegramEnabled && isTelegramConfigured()) {
-                  const ok = await sendConstellationAlert(alert);
-                  if (ok) {
+                // Hand off to the unified Telegram convergence layer. The
+                // formatted Don/state-vector block rides along in
+                // `evidence.formatted` so the convergence subscriber can
+                // emit it verbatim under the `[Ephemeroi · structural]`
+                // badge (or fold it into a cross-limb merge).
+                if (settings.telegramEnabled) {
+                  publishSignal({
+                    origin: "ephemeroi",
+                    role: "structural",
+                    severity: blendedImportance,
+                    headline: report.headline,
+                    body: report.body,
+                    subject: `${sourceRow!.kind}:${sourceRow!.target}`,
+                    evidence: {
+                      formatted: alert.formatted,
+                      sourceLabel: sourceRow!.label,
+                      sourceTarget: sourceRow!.target,
+                      sourceKind: sourceRow!.kind,
+                      reportId: report.id,
+                      donSource: alert.donSource,
+                    },
+                  });
+                  // Convergence is fire-and-forget. We mark the report as
+                  // delivered when Telegram is *configured* (mirroring the
+                  // pre-convergence behaviour, where the ack came from the
+                  // direct sendConstellationAlert call). Actual Telegram
+                  // failures are logged inside the convergence subscriber.
+                  if (isTelegramConfigured()) {
                     await markReportDelivered(report.id);
                     report.delivered = true;
                     report.deliveredAt = new Date();

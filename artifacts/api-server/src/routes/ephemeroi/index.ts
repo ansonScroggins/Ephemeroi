@@ -46,9 +46,14 @@ import {
 } from "./wire";
 import { ephemeroiLoop, InFlightError } from "./loop";
 import { startTelegramAnswerLoop } from "./telegramAnswer";
+import { startConvergence } from "./convergence";
 import { bus, type EphemeroiEvent } from "./bus";
 import { assertPublicHttpUrl } from "./guard";
 import { logger } from "../../lib/logger";
+import {
+  SignalEnvelopeSchema,
+  publishSignal,
+} from "../../lib/signal-envelope";
 
 const router: IRouter = Router();
 
@@ -56,6 +61,11 @@ const router: IRouter = Router();
 ephemeroiLoop.start();
 // Start listening for inbound Telegram questions (no-op if Telegram unconfigured).
 startTelegramAnswerLoop();
+// Wire the unified Telegram convergence layer to the cross-site signal bus.
+// All in-process publishSignal() calls (Ephemeroi structural alerts +
+// Metacog truth-anchor / exploration) now flow through this subscriber so
+// they pick up `[Origin · role]` badges + cross-limb merging.
+startConvergence();
 
 // ===== State (one-shot dashboard) =====
 
@@ -252,6 +262,49 @@ router.get("/ephemeroi/beliefs/by-source", async (req, res) => {
     logger.error({ err }, "GET /ephemeroi/beliefs/by-source failed");
     res.status(500).json({ error: "Failed to load beliefs by source" });
   }
+});
+
+// ===== Inbound cross-site signal endpoint =====
+// Accepts a SignalEnvelope POSTed from another site (currently Metacog when
+// it runs out of process). Validates against `EPHEMEROI_SIGNAL_SECRET` and
+// re-publishes onto the in-process bus, so the unified Telegram convergence
+// layer routes it identically to in-process signals.
+//
+// Same-process Metacog adapters (search/truth-anchor + search/exploration)
+// already publish directly to the bus; this endpoint exists so a future split
+// deployment doesn't break the unified stream.
+router.post("/ephemeroi/signal", (req, res): void => {
+  const expected = process.env["EPHEMEROI_SIGNAL_SECRET"];
+  if (!expected) {
+    res.status(503).json({
+      error:
+        "Inbound signal endpoint disabled — set EPHEMEROI_SIGNAL_SECRET to enable",
+    });
+    return;
+  }
+  const headerRaw = req.header("x-ephemeroi-signal-secret");
+  if (!headerRaw || headerRaw !== expected) {
+    res
+      .status(401)
+      .json({ error: "Missing or invalid x-ephemeroi-signal-secret header" });
+    return;
+  }
+  const parsed = SignalEnvelopeSchema.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "Invalid signal envelope",
+      issues: parsed.error.issues
+        .slice(0, 5)
+        .map((i) => ({ path: i.path.join("."), message: i.message })),
+    });
+    return;
+  }
+  publishSignal(parsed.data);
+  res.status(202).json({
+    accepted: true,
+    origin: parsed.data.origin,
+    role: parsed.data.role,
+  });
 });
 
 router.delete("/ephemeroi/sources/:id", async (req, res) => {

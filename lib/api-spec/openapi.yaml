@@ -410,6 +410,61 @@ paths:
               schema:
                 $ref: "#/components/schemas/EphemeroiBiomimeticResult"
 
+  /ephemeroi/signal:
+    post:
+      operationId: postEphemeroiSignal
+      tags: [ephemeroi]
+      summary: Inbound cross-site signal envelope
+      description: |
+        Accepts a `SignalEnvelope` POSTed from another site (currently Metacog
+        when it runs out of process). The envelope is validated and re-published
+        on the in-process signal bus, so the unified Telegram convergence
+        layer routes it identically to in-process signals — picking up the
+        `[Origin · role]` badge and participating in cross-limb merge/correlation.
+
+        **Auth.** Requires the `x-ephemeroi-signal-secret` header to match the
+        `EPHEMEROI_SIGNAL_SECRET` env var. If the env var is unset the endpoint
+        returns 503 — same-process Metacog adapters publish directly to the
+        bus, so no inbound HTTP is needed in the default deployment.
+      parameters:
+        - name: x-ephemeroi-signal-secret
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Shared secret matched against `EPHEMEROI_SIGNAL_SECRET`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignalEnvelope"
+      responses:
+        "202":
+          description: Envelope accepted; the convergence layer will deliver.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSignalAccepted"
+        "400":
+          description: Invalid envelope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid shared secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Inbound endpoint disabled (set EPHEMEROI_SIGNAL_SECRET to enable).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
   /ephemeroi/self-improve:
     post:
       operationId: runEphemeroiSelfImprovement
@@ -846,6 +901,23 @@ components:
           type: object
           additionalProperties: true
       required: [origin, role, severity, headline, body]
+
+    EphemeroiSignalAccepted:
+      type: object
+      description: |
+        Acknowledgement that an inbound signal envelope was validated and
+        re-published on the signal bus. Telegram delivery happens
+        asynchronously through the convergence subscriber.
+      properties:
+        accepted:
+          type: boolean
+        origin:
+          type: string
+          enum: [metacog, ephemeroi]
+        role:
+          type: string
+          enum: [structural, truth-anchor, exploration]
+      required: [accepted, origin, role]
 
     # --- Sample queries ---
     SampleQueriesResponse:

@@ -28,6 +28,7 @@ import type {
   EphemeroiSelfImprovementResult,
   EphemeroiSettings,
   EphemeroiSettingsUpdate,
+  EphemeroiSignalAccepted,
   EphemeroiSource,
   EphemeroiSourceCreate,
   EphemeroiSourceStatesResponse,
@@ -43,6 +44,7 @@ import type {
   MetacognitiveSearchRequest,
   MetacognitiveSearchSseEvent,
   SampleQueriesResponse,
+  SignalEnvelope,
   TruthAnchorRequest,
   TruthAnchorResponse,
 } from "./api.schemas";
@@ -1724,6 +1726,103 @@ export const useRunEphemeroiBiomimetic = <
   TContext
 > => {
   return useMutation(getRunEphemeroiBiomimeticMutationOptions(options));
+};
+
+/**
+ * Accepts a `SignalEnvelope` POSTed from another site (currently Metacog
+when it runs out of process). The envelope is validated and re-published
+on the in-process signal bus, so the unified Telegram convergence
+layer routes it identically to in-process signals — picking up the
+`[Origin · role]` badge and participating in cross-limb merge/correlation.
+
+**Auth.** Requires the `x-ephemeroi-signal-secret` header to match the
+`EPHEMEROI_SIGNAL_SECRET` env var. If the env var is unset the endpoint
+returns 503 — same-process Metacog adapters publish directly to the
+bus, so no inbound HTTP is needed in the default deployment.
+
+ * @summary Inbound cross-site signal envelope
+ */
+export const getPostEphemeroiSignalUrl = () => {
+  return `/api/ephemeroi/signal`;
+};
+
+export const postEphemeroiSignal = async (
+  signalEnvelope: SignalEnvelope,
+  options?: RequestInit,
+): Promise<EphemeroiSignalAccepted> => {
+  return customFetch<EphemeroiSignalAccepted>(getPostEphemeroiSignalUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(signalEnvelope),
+  });
+};
+
+export const getPostEphemeroiSignalMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postEphemeroiSignal>>,
+    TError,
+    { data: BodyType<SignalEnvelope> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof postEphemeroiSignal>>,
+  TError,
+  { data: BodyType<SignalEnvelope> },
+  TContext
+> => {
+  const mutationKey = ["postEphemeroiSignal"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof postEphemeroiSignal>>,
+    { data: BodyType<SignalEnvelope> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return postEphemeroiSignal(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type PostEphemeroiSignalMutationResult = NonNullable<
+  Awaited<ReturnType<typeof postEphemeroiSignal>>
+>;
+export type PostEphemeroiSignalMutationBody = BodyType<SignalEnvelope>;
+export type PostEphemeroiSignalMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Inbound cross-site signal envelope
+ */
+export const usePostEphemeroiSignal = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof postEphemeroiSignal>>,
+    TError,
+    { data: BodyType<SignalEnvelope> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof postEphemeroiSignal>>,
+  TError,
+  { data: BodyType<SignalEnvelope> },
+  TContext
+> => {
+  return useMutation(getPostEphemeroiSignalMutationOptions(options));
 };
 
 /**
