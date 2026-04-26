@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 
+export * from "./dataverseHit";
 export * from "./decomposeStepData";
 export * from "./decomposeStepDataStrategy";
 export * from "./detectedPattern";
@@ -39,6 +40,10 @@ export * from "./ephemeroiStateAxes";
 export * from "./ephemeroiStateLoop";
 export * from "./errorResponse";
 export * from "./evaluateStepData";
+export * from "./explorationApi";
+export * from "./explorationRequest";
+export * from "./explorationResponse";
+export * from "./explorationResponseRaw";
 export * from "./healthStatus";
 export * from "./listEphemeroiBeliefsBySourceParams";
 export * from "./listEphemeroiObservationsParams";
@@ -53,6 +58,10 @@ export * from "./retrieveStepData";
 export * from "./retrieveStepDataSourceType";
 export * from "./sampleQueriesResponse";
 export * from "./sampleQuery";
+export * from "./signalEnvelope";
+export * from "./signalEnvelopeEvidence";
+export * from "./signalEnvelopeOrigin";
+export * from "./signalEnvelopeRole";
 export * from "./sseCompleteEvent";
 export * from "./sseCompleteEventType";
 export * from "./sseErrorEvent";
@@ -65,5 +74,7 @@ export * from "./sseStepEventType";
 export * from "./sseTokenEvent";
 export * from "./sseTokenEventType";
 export * from "./synthesizeStepData";
+export * from "./truthAnchorRequest";
+export * from "./truthAnchorResponse";
 export * from "./webSearchStepData";
 export * from "./webSource";

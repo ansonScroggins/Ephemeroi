@@ -77,6 +77,115 @@ export const GetSampleQueriesResponse = zod.object({
 });
 
 /**
+ * Hits the Harvard Dataverse public search API and returns matching dataset
+citations. When hits are found, the response also carries a structured
+`signal` envelope (shared with Ephemeroi via the convergence layer) so
+high-confidence verifications can flow to the unified Telegram stream.
+Degrades gracefully: if Dataverse is unreachable, `degraded=true` and
+`hits=[]` are returned with a human-readable note instead of a 5xx.
+
+ * @summary Verify a factual question against Harvard Dataverse
+ */
+
+export const SearchTruthAnchorBody = zod.object({
+  query: zod.string().min(1),
+});
+
+export const searchTruthAnchorResponseSignalOneSeverityMin = 0;
+export const searchTruthAnchorResponseSignalOneSeverityMax = 1;
+
+export const SearchTruthAnchorResponse = zod.object({
+  query: zod.string(),
+  hits: zod.array(
+    zod
+      .object({
+        title: zod.string(),
+        citation: zod.string(),
+        url: zod.string(),
+        abstract: zod.string(),
+      })
+      .describe(
+        "Single dataset citation returned by Harvard Dataverse search.",
+      ),
+  ),
+  signal: zod
+    .object({
+      origin: zod.enum(["metacog", "ephemeroi"]),
+      role: zod.enum(["structural", "truth-anchor", "exploration"]),
+      severity: zod
+        .number()
+        .min(searchTruthAnchorResponseSignalOneSeverityMin)
+        .max(searchTruthAnchorResponseSignalOneSeverityMax),
+      headline: zod.string(),
+      body: zod.string(),
+      subject: zod.string().optional(),
+      evidence: zod.record(zod.string(), zod.unknown()).optional(),
+    })
+    .describe(
+      "Shared envelope for cross-site signals between Ephemeroi (structural)\nand Metacog (truth-anchor \/ exploration). Consumed by the unified\nTelegram convergence layer.\n",
+    )
+    .nullish(),
+  degraded: zod
+    .boolean()
+    .describe("True if Dataverse was unreachable or returned no usable hits."),
+  notes: zod.string(),
+});
+
+/**
+ * Matches the user's query against a curated catalog of free, keyless
+public APIs (Wikipedia, Open-Meteo weather, REST Countries, Open Library,
+USGS earthquakes, CoinGecko prices, ISS position), calls the highest-
+scoring entry, validates the response against the entry's declared zod
+schema, and returns a normalised summary. Each call is bounded by a
+per-API rolling-minute budget. Notable findings emit a structured
+`signal` envelope (shared with Ephemeroi via the convergence layer).
+
+ * @summary Pick a free public API from the catalog and call it
+ */
+
+export const SearchExplorationBody = zod.object({
+  query: zod.string().min(1),
+});
+
+export const searchExplorationResponseSignalOneSeverityMin = 0;
+export const searchExplorationResponseSignalOneSeverityMax = 1;
+
+export const SearchExplorationResponse = zod.object({
+  query: zod.string(),
+  api: zod
+    .object({
+      id: zod.string(),
+      description: zod.string(),
+      url: zod.string(),
+      match: zod
+        .number()
+        .describe("Intent-match score the catalog used to pick this API."),
+    })
+    .nullish(),
+  summary: zod.string(),
+  raw: zod.record(zod.string(), zod.unknown()).nullish(),
+  signal: zod
+    .object({
+      origin: zod.enum(["metacog", "ephemeroi"]),
+      role: zod.enum(["structural", "truth-anchor", "exploration"]),
+      severity: zod
+        .number()
+        .min(searchExplorationResponseSignalOneSeverityMin)
+        .max(searchExplorationResponseSignalOneSeverityMax),
+      headline: zod.string(),
+      body: zod.string(),
+      subject: zod.string().optional(),
+      evidence: zod.record(zod.string(), zod.unknown()).optional(),
+    })
+    .describe(
+      "Shared envelope for cross-site signals between Ephemeroi (structural)\nand Metacog (truth-anchor \/ exploration). Consumed by the unified\nTelegram convergence layer.\n",
+    )
+    .nullish(),
+  degraded: zod.boolean(),
+  notes: zod.string(),
+});
+
+/**
  * One-shot dashboard payload — settings, source counts, recent observations/reports/beliefs/contradictions, and loop status.
  * @summary Snapshot of the explorer
  */

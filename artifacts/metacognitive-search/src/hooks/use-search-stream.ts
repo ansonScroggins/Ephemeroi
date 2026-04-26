@@ -1,6 +1,42 @@
 import { useState, useCallback, useRef } from "react";
 
-export type SearchMode = "research" | "code" | "web" | "society";
+export type SearchMode = "research" | "code" | "web" | "society" | "verify" | "explore";
+
+// Shared cross-site signal envelope (mirrors the OpenAPI SignalEnvelope schema).
+export interface SignalEnvelope {
+  origin: "metacog" | "ephemeroi";
+  role: "structural" | "truth-anchor" | "exploration";
+  severity: number;
+  headline: string;
+  body: string;
+  subject?: string;
+  evidence?: Record<string, unknown>;
+}
+
+export interface DataverseHit {
+  title: string;
+  citation: string;
+  url: string;
+  abstract: string;
+}
+
+export interface TruthAnchorPayload {
+  query: string;
+  hits: DataverseHit[];
+  signal: SignalEnvelope | null;
+  degraded: boolean;
+  notes: string;
+}
+
+export interface ExplorationPayload {
+  query: string;
+  api: { id: string; description: string; url: string; match: number } | null;
+  summary: string;
+  raw: Record<string, unknown> | null;
+  signal: SignalEnvelope | null;
+  degraded: boolean;
+  notes: string;
+}
 
 export interface DecomposePayload {
   subQuestions: string[];
@@ -84,7 +120,9 @@ export type StepData =
   | { stepType: 'SYNTHESIZE'; data: SynthesizePayload }
   | { stepType: 'WEB_SEARCH'; data: WebSearchPayload }
   | { stepType: 'PATTERN'; data: PatternPayload }
-  | { stepType: 'REFLECT'; data: ReflectPayload };
+  | { stepType: 'REFLECT'; data: ReflectPayload }
+  | { stepType: 'TRUTH_ANCHOR'; data: TruthAnchorPayload }
+  | { stepType: 'EXPLORATION'; data: ExplorationPayload };
 
 export type StreamEvent =
   | { type: 'started'; query: string; provider?: string; model?: string }
@@ -125,6 +163,53 @@ export function useSearchStream() {
 
     const abortController = new AbortController();
     activeAbortController.current = abortController;
+
+    // Verify (Dataverse) and Explore (public-API catalog) are plain JSON
+    // request/response — not SSE. We push a single synthetic step event so
+    // the existing chat feed renders them with their own bubble types.
+    if (opts.mode === "verify" || opts.mode === "explore") {
+      const endpoint = opts.mode === "verify" ? "/api/search/truth-anchor" : "/api/search/exploration";
+      const stepType = opts.mode === "verify" ? "TRUTH_ANCHOR" : "EXPLORATION";
+      const placeholderEvent: StreamEvent = { type: "started", query: opts.query };
+      setEvents([placeholderEvent]);
+      setActiveStepType(stepType);
+      try {
+        const resp = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: opts.query }),
+          signal: abortController.signal,
+        });
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => "Unknown error");
+          setEvents(prev => [...prev, { type: "error", message: `Request failed (${resp.status}): ${text}` }]);
+          setIsRunning(false);
+          setActiveStepType(null);
+          return;
+        }
+        const raw: unknown = await resp.json();
+        if (typeof raw !== "object" || raw === null) {
+          throw new Error("Malformed response payload");
+        }
+        const stepEvent = (
+          opts.mode === "verify"
+            ? { type: "step", stepType: "TRUTH_ANCHOR", data: raw as TruthAnchorPayload }
+            : { type: "step", stepType: "EXPLORATION", data: raw as ExplorationPayload }
+        ) as StreamEvent;
+        setEvents(prev => [...prev, stepEvent, { type: "complete", totalSteps: 1, rawResponse: "" }]);
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") {
+          // user cancellation
+        } else {
+          const message = err instanceof Error ? err.message : "Request failed";
+          setEvents(prev => [...prev, { type: "error", message }]);
+        }
+      } finally {
+        setIsRunning(false);
+        setActiveStepType(null);
+      }
+      return;
+    }
 
     try {
       const body: Record<string, unknown> = { query: opts.query, mode: opts.mode ?? "research" };

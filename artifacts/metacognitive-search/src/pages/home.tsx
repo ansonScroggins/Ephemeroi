@@ -16,6 +16,8 @@ const ACTIVE_LABEL: Record<string, string> = {
   PIVOT: "changing tack…",
   SYNTHESIZE: "writing it up…",
   REFLECT: "reflecting…",
+  TRUTH_ANCHOR: "checking Dataverse…",
+  EXPLORATION: "calling a public API…",
 };
 
 export default function Home() {

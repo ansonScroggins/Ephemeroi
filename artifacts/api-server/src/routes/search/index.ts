@@ -1,9 +1,17 @@
 import { Router, type IRouter } from "express";
 import { openai, OpenAI, type OpenAIClient } from "@workspace/integrations-openai-ai-server";
-import { MetacognitiveSearchBody, GetSampleQueriesResponse } from "@workspace/api-zod";
+import {
+  MetacognitiveSearchBody,
+  GetSampleQueriesResponse,
+  SearchTruthAnchorBody,
+  SearchExplorationBody,
+} from "@workspace/api-zod";
 import { github, parseRepoTarget, GitHubError } from "../../lib/github-client";
 import { listBeliefsBySource } from "../ephemeroi/store";
 import { logger } from "../../lib/logger";
+import { publishSignal } from "../../lib/signal-envelope";
+import { searchDataverse } from "./dataverse";
+import { exploreWithCatalog } from "./api-catalog";
 
 const router: IRouter = Router();
 
@@ -687,6 +695,46 @@ async function fetchGithubContext(owner: string, repo: string): Promise<GithubCo
 router.get("/search/sample-queries", (_req, res): void => {
   const response = GetSampleQueriesResponse.parse({ queries: SAMPLE_QUERIES });
   res.json(response);
+});
+
+// ===== Truth anchor — Dataverse =====
+router.post("/search/truth-anchor", async (req, res): Promise<void> => {
+  const parsed = SearchTruthAnchorBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request body" });
+    return;
+  }
+  const { query } = parsed.data;
+  const result = await searchDataverse(query);
+  if (result.signal) publishSignal(result.signal);
+  res.json({
+    query,
+    hits: result.hits,
+    signal: result.signal,
+    degraded: result.degraded,
+    notes: result.notes,
+  });
+});
+
+// ===== Exploration — public-API catalog =====
+router.post("/search/exploration", async (req, res): Promise<void> => {
+  const parsed = SearchExplorationBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? "Invalid request body" });
+    return;
+  }
+  const { query } = parsed.data;
+  const result = await exploreWithCatalog(query);
+  if (result.signal) publishSignal(result.signal);
+  res.json({
+    query,
+    api: result.picked,
+    summary: result.summary,
+    raw: result.raw,
+    signal: result.signal,
+    degraded: result.degraded,
+    notes: result.notes,
+  });
 });
 
 export default router;

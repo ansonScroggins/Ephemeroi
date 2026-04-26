@@ -83,6 +83,69 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/SampleQueriesResponse"
+  /search/truth-anchor:
+    post:
+      operationId: searchTruthAnchor
+      tags: [search]
+      summary: Verify a factual question against Harvard Dataverse
+      description: |
+        Hits the Harvard Dataverse public search API and returns matching dataset
+        citations. When hits are found, the response also carries a structured
+        `signal` envelope (shared with Ephemeroi via the convergence layer) so
+        high-confidence verifications can flow to the unified Telegram stream.
+        Degrades gracefully: if Dataverse is unreachable, `degraded=true` and
+        `hits=[]` are returned with a human-readable note instead of a 5xx.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TruthAnchorRequest"
+      responses:
+        "200":
+          description: Truth-anchor result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TruthAnchorResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /search/exploration:
+    post:
+      operationId: searchExploration
+      tags: [search]
+      summary: Pick a free public API from the catalog and call it
+      description: |
+        Matches the user's query against a curated catalog of free, keyless
+        public APIs (Wikipedia, Open-Meteo weather, REST Countries, Open Library,
+        USGS earthquakes, CoinGecko prices, ISS position), calls the highest-
+        scoring entry, validates the response against the entry's declared zod
+        schema, and returns a normalised summary. Each call is bounded by a
+        per-API rolling-minute budget. Notable findings emit a structured
+        `signal` envelope (shared with Ephemeroi via the convergence layer).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExplorationRequest"
+      responses:
+        "200":
+          description: Exploration result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExplorationResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
   # ===== Ephemeroi: autonomous explorer =====
   /ephemeroi/state:
@@ -663,6 +726,126 @@ components:
           type: string
           description: Honest critique of the model's own reasoning — limitations, uncertainties, where it might be wrong.
       required: [personalSummary, interestingObservations, autonomousExplorations, selfAssessment]
+
+    # --- Truth anchor (Dataverse) ---
+    TruthAnchorRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 1
+      required: [query]
+
+    DataverseHit:
+      type: object
+      description: Single dataset citation returned by Harvard Dataverse search.
+      properties:
+        title:
+          type: string
+        citation:
+          type: string
+        url:
+          type: string
+        abstract:
+          type: string
+      required: [title, citation, url, abstract]
+
+    TruthAnchorResponse:
+      type: object
+      properties:
+        query:
+          type: string
+        hits:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataverseHit"
+        signal:
+          allOf:
+            - $ref: "#/components/schemas/SignalEnvelope"
+          nullable: true
+        degraded:
+          type: boolean
+          description: True if Dataverse was unreachable or returned no usable hits.
+        notes:
+          type: string
+      required: [query, hits, degraded, notes]
+
+    # --- Exploration (public-API catalog) ---
+    ExplorationRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 1
+      required: [query]
+
+    ExplorationApi:
+      type: object
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        url:
+          type: string
+        match:
+          type: number
+          description: Intent-match score the catalog used to pick this API.
+      required: [id, description, url, match]
+
+    ExplorationResponse:
+      type: object
+      properties:
+        query:
+          type: string
+        api:
+          allOf:
+            - $ref: "#/components/schemas/ExplorationApi"
+          nullable: true
+        summary:
+          type: string
+        raw:
+          type: object
+          additionalProperties: true
+          nullable: true
+        signal:
+          allOf:
+            - $ref: "#/components/schemas/SignalEnvelope"
+          nullable: true
+        degraded:
+          type: boolean
+        notes:
+          type: string
+      required: [query, summary, degraded, notes]
+
+    # --- Cross-site signal envelope (shared with convergence task) ---
+    SignalEnvelope:
+      type: object
+      description: |
+        Shared envelope for cross-site signals between Ephemeroi (structural)
+        and Metacog (truth-anchor / exploration). Consumed by the unified
+        Telegram convergence layer.
+      properties:
+        origin:
+          type: string
+          enum: [metacog, ephemeroi]
+        role:
+          type: string
+          enum: [structural, truth-anchor, exploration]
+        severity:
+          type: number
+          minimum: 0
+          maximum: 1
+        headline:
+          type: string
+        body:
+          type: string
+        subject:
+          type: string
+        evidence:
+          type: object
+          additionalProperties: true
+      required: [origin, role, severity, headline, body]
 
     # --- Sample queries ---
     SampleQueriesResponse:

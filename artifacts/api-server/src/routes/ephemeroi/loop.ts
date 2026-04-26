@@ -239,16 +239,43 @@ class EphemeroiLoop {
           bus.publish({ type: "observation", payload: observationToWire(obs) });
 
           // Apply state vector delta if the reflector flagged real movement
-          // and the observation is anchored to a known source. We do this
-          // BEFORE creating the report so the constellation alert can show
-          // the *new* vector + the just-applied delta.
+          // and the observation is anchored to a *currently existing* source.
+          // We do this BEFORE creating the report so the constellation alert
+          // can show the *new* vector + the just-applied delta.
+          //
+          // Orphan guard: source_id is FK-less by design (so deleting a
+          // source doesn't cascade-destroy its history), which means an
+          // observation can survive its parent source. If we let
+          // applySourceStateDelta run on an orphan, we'd accumulate a zombie
+          // ephemeroi_source_state row with no UI, no Constellation
+          // delivery, and no way to clean up — exactly the silent failure
+          // mode that motivated this guard. So when the source row is gone
+          // we LOG the orphan loudly and skip both state mutation and the
+          // Constellation path; the plain report still ships.
           let updatedSourceState: Awaited<
             ReturnType<typeof applySourceStateDelta>
           > | null = null;
-          if (reflection.stateDelta && obs.sourceId !== null) {
+          const sourceExists =
+            obs.sourceId !== null && sourceById.has(obs.sourceId);
+          if (
+            obs.sourceId !== null &&
+            !sourceExists &&
+            (reflection.stateDelta || blendedImportance >= CONSTELLATION_THRESHOLD)
+          ) {
+            logger.warn(
+              {
+                observationId: obs.id,
+                orphanSourceId: obs.sourceId,
+                orphanSourceLabel: obs.sourceLabel,
+                blendedImportance,
+              },
+              "Orphan observation: parent source has been deleted; skipping state-delta + constellation path. Re-anchor or delete the observation to restore alerts.",
+            );
+          }
+          if (reflection.stateDelta && sourceExists) {
             try {
               updatedSourceState = await applySourceStateDelta({
-                sourceId: obs.sourceId,
+                sourceId: obs.sourceId!,
                 delta: reflection.stateDelta,
                 observationId: obs.id,
                 insight: reflection.insight,

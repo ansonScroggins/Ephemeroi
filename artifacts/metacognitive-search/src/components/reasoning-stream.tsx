@@ -10,11 +10,15 @@ import {
   WebSearchPayload,
   PatternPayload,
   ReflectPayload,
+  TruthAnchorPayload,
+  ExplorationPayload,
 } from "@/hooks/use-search-stream";
 import {
   AlertTriangle, ExternalLink, Globe, Layers,
   Lightbulb, Search, Sparkles, Wand2, Zap,
+  BookCheck, Compass, ChevronDown, ChevronRight,
 } from "lucide-react";
+import { useState } from "react";
 import { cn } from "@/lib/utils";
 
 interface ChatFeedProps {
@@ -34,6 +38,8 @@ const STEP_LABEL: Record<string, { label: string; Icon: typeof Search }> = {
   PIVOT: { label: "Wait, let me try another angle", Icon: Zap },
   SYNTHESIZE: { label: "Here's my answer", Icon: Sparkles },
   REFLECT: { label: "One more thing — my honest take", Icon: Lightbulb },
+  TRUTH_ANCHOR: { label: "Anchoring against Dataverse", Icon: BookCheck },
+  EXPLORATION: { label: "Calling a public API", Icon: Compass },
 };
 
 export function ChatFeed({
@@ -135,10 +141,160 @@ function renderEvent(event: StreamEvent): React.ReactNode {
       case 'WEB_SEARCH': return <WebSearchBubble d={event.data as WebSearchPayload} />;
       case 'PATTERN': return <PatternBubble d={event.data as PatternPayload} />;
       case 'REFLECT': return <ReflectBubble d={event.data as ReflectPayload} />;
+      case 'TRUTH_ANCHOR': return <TruthAnchorBubble d={event.data as TruthAnchorPayload} />;
+      case 'EXPLORATION': return <ExplorationBubble d={event.data as ExplorationPayload} />;
       default: return null;
     }
   }
   return null;
+}
+
+function RoleBadge({ role }: { role: 'truth-anchor' | 'exploration' }) {
+  const cls = role === 'truth-anchor'
+    ? "bg-emerald-500/15 text-emerald-300 border-emerald-500/40"
+    : "bg-sky-500/15 text-sky-300 border-sky-500/40";
+  const label = role === 'truth-anchor' ? 'truth anchor' : 'exploration';
+  return (
+    <span
+      className={cn("inline-flex items-center gap-1 text-[9px] font-mono uppercase tracking-widest px-1.5 py-0.5 rounded-full border", cls)}
+      data-testid={`badge-role-${role}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function TruthAnchorBubble({ d }: { d: TruthAnchorPayload }) {
+  return (
+    <AiBubble
+      label={STEP_LABEL.TRUTH_ANCHOR!.label}
+      Icon={STEP_LABEL.TRUTH_ANCHOR!.Icon}
+      accent="emerald"
+      testId="stream-step-truth-anchor"
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <RoleBadge role="truth-anchor" />
+        {d.signal && (
+          <span className="text-[10px] font-mono text-emerald-300/80">
+            severity {(d.signal.severity * 100).toFixed(0)}%
+          </span>
+        )}
+      </div>
+      {d.degraded ? (
+        <p className="text-[12px] text-amber-300/90 italic">⚠ {d.notes}</p>
+      ) : d.hits.length === 0 ? (
+        <p className="text-[12px] text-muted-foreground italic">{d.notes}</p>
+      ) : (
+        <>
+          <p className="text-foreground/95 leading-relaxed mb-2 text-[13px]">
+            I checked Harvard Dataverse for "{d.query}" and found{' '}
+            <span className="text-emerald-300 font-medium">{d.hits.length} dataset{d.hits.length === 1 ? '' : 's'}</span>.
+          </p>
+          <ol className="space-y-2">
+            {d.hits.map((h, i) => {
+              const safe = /^https?:\/\//i.test(h.url);
+              return (
+                <li
+                  key={i}
+                  className="border border-border/30 rounded-xl p-2 bg-muted/20"
+                  data-testid={`citation-dataverse-${i}`}
+                >
+                  <div className="flex items-start gap-2">
+                    <span className="text-emerald-400 font-mono text-[10px] shrink-0 mt-0.5">[{i + 1}]</span>
+                    <div className="min-w-0 flex-1">
+                      {safe ? (
+                        <a
+                          href={h.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-emerald-300 hover:text-emerald-200 hover:underline text-[12px] font-medium flex items-center gap-1"
+                        >
+                          <span className="truncate">{h.title}</span>
+                          <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-60" />
+                        </a>
+                      ) : (
+                        <span className="text-foreground/85 truncate block">{h.title}</span>
+                      )}
+                      {h.citation && (
+                        <div className="text-[11px] text-muted-foreground/85 mt-0.5 italic">{h.citation}</div>
+                      )}
+                      {h.abstract && (
+                        <div className="text-[11px] text-foreground/75 mt-1 line-clamp-2">{h.abstract}</div>
+                      )}
+                    </div>
+                  </div>
+                </li>
+              );
+            })}
+          </ol>
+        </>
+      )}
+    </AiBubble>
+  );
+}
+
+function ExplorationBubble({ d }: { d: ExplorationPayload }) {
+  const [open, setOpen] = useState(false);
+  const safeUrl = d.api && /^https?:\/\//i.test(d.api.url);
+  return (
+    <AiBubble
+      label={STEP_LABEL.EXPLORATION!.label}
+      Icon={STEP_LABEL.EXPLORATION!.Icon}
+      accent="cyan"
+      testId="stream-step-exploration"
+    >
+      <div className="flex items-center gap-2 mb-2">
+        <RoleBadge role="exploration" />
+        {d.signal && (
+          <span className="text-[10px] font-mono text-sky-300/80">
+            severity {(d.signal.severity * 100).toFixed(0)}%
+          </span>
+        )}
+      </div>
+      {d.degraded ? (
+        <p className="text-[12px] text-amber-300/90 italic">⚠ {d.notes}</p>
+      ) : (
+        <>
+          {d.api && (
+            <div className="text-[11px] text-muted-foreground mb-1.5 font-mono">
+              picked <span className="text-sky-300">{d.api.id}</span> · {d.api.description}
+            </div>
+          )}
+          <p className="text-foreground/95 leading-relaxed text-[13px]">{d.summary}</p>
+          {d.api && safeUrl && (
+            <a
+              href={d.api.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-[11px] text-sky-300 hover:text-sky-200 hover:underline mt-1.5"
+            >
+              <span className="truncate max-w-[260px]">source</span>
+              <ExternalLink className="h-2.5 w-2.5 shrink-0 opacity-60" />
+            </a>
+          )}
+          {d.raw && (
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="mt-2 flex items-center gap-1 text-[10px] uppercase tracking-widest text-muted-foreground hover:text-foreground font-mono"
+              data-testid="button-toggle-exploration-raw"
+            >
+              {open ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+              raw response
+            </button>
+          )}
+          {open && d.raw && (
+            <pre
+              className="mt-1.5 bg-slate-950/80 border border-border/40 rounded-lg p-2 text-[10px] font-mono text-sky-200/90 overflow-x-auto max-h-64"
+              data-testid="exploration-raw-json"
+            >
+              <code>{JSON.stringify(d.raw, null, 2)}</code>
+            </pre>
+          )}
+        </>
+      )}
+    </AiBubble>
+  );
 }
 
 // ───────────── Generic bubbles ─────────────

@@ -278,6 +278,94 @@ export type MetacognitiveSearchSseEvent =
   | SseCompleteEvent
   | SseErrorEvent;
 
+export interface TruthAnchorRequest {
+  /** @minLength 1 */
+  query: string;
+}
+
+/**
+ * Single dataset citation returned by Harvard Dataverse search.
+ */
+export interface DataverseHit {
+  title: string;
+  citation: string;
+  url: string;
+  abstract: string;
+}
+
+export type SignalEnvelopeOrigin =
+  (typeof SignalEnvelopeOrigin)[keyof typeof SignalEnvelopeOrigin];
+
+export const SignalEnvelopeOrigin = {
+  metacog: "metacog",
+  ephemeroi: "ephemeroi",
+} as const;
+
+export type SignalEnvelopeRole =
+  (typeof SignalEnvelopeRole)[keyof typeof SignalEnvelopeRole];
+
+export const SignalEnvelopeRole = {
+  structural: "structural",
+  "truth-anchor": "truth-anchor",
+  exploration: "exploration",
+} as const;
+
+export type SignalEnvelopeEvidence = { [key: string]: unknown };
+
+/**
+ * Shared envelope for cross-site signals between Ephemeroi (structural)
+and Metacog (truth-anchor / exploration). Consumed by the unified
+Telegram convergence layer.
+
+ */
+export interface SignalEnvelope {
+  origin: SignalEnvelopeOrigin;
+  role: SignalEnvelopeRole;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  severity: number;
+  headline: string;
+  body: string;
+  subject?: string;
+  evidence?: SignalEnvelopeEvidence;
+}
+
+export interface TruthAnchorResponse {
+  query: string;
+  hits: DataverseHit[];
+  signal?: SignalEnvelope | null;
+  /** True if Dataverse was unreachable or returned no usable hits. */
+  degraded: boolean;
+  notes: string;
+}
+
+export interface ExplorationRequest {
+  /** @minLength 1 */
+  query: string;
+}
+
+export interface ExplorationApi {
+  id: string;
+  description: string;
+  url: string;
+  /** Intent-match score the catalog used to pick this API. */
+  match: number;
+}
+
+export type ExplorationResponseRaw = { [key: string]: unknown } | null;
+
+export interface ExplorationResponse {
+  query: string;
+  api?: ExplorationApi | null;
+  summary: string;
+  raw?: ExplorationResponseRaw;
+  signal?: SignalEnvelope | null;
+  degraded: boolean;
+  notes: string;
+}
+
 export interface SampleQuery {
   id: string;
   label: string;

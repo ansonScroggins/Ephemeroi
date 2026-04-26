@@ -34,6 +34,8 @@ import type {
   EphemeroiSourcesResponse,
   EphemeroiState,
   ErrorResponse,
+  ExplorationRequest,
+  ExplorationResponse,
   HealthStatus,
   ListEphemeroiBeliefsBySourceParams,
   ListEphemeroiObservationsParams,
@@ -41,6 +43,8 @@ import type {
   MetacognitiveSearchRequest,
   MetacognitiveSearchSseEvent,
   SampleQueriesResponse,
+  TruthAnchorRequest,
+  TruthAnchorResponse,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -308,6 +312,193 @@ export function useGetSampleQueries<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Hits the Harvard Dataverse public search API and returns matching dataset
+citations. When hits are found, the response also carries a structured
+`signal` envelope (shared with Ephemeroi via the convergence layer) so
+high-confidence verifications can flow to the unified Telegram stream.
+Degrades gracefully: if Dataverse is unreachable, `degraded=true` and
+`hits=[]` are returned with a human-readable note instead of a 5xx.
+
+ * @summary Verify a factual question against Harvard Dataverse
+ */
+export const getSearchTruthAnchorUrl = () => {
+  return `/api/search/truth-anchor`;
+};
+
+export const searchTruthAnchor = async (
+  truthAnchorRequest: TruthAnchorRequest,
+  options?: RequestInit,
+): Promise<TruthAnchorResponse> => {
+  return customFetch<TruthAnchorResponse>(getSearchTruthAnchorUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(truthAnchorRequest),
+  });
+};
+
+export const getSearchTruthAnchorMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof searchTruthAnchor>>,
+    TError,
+    { data: BodyType<TruthAnchorRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof searchTruthAnchor>>,
+  TError,
+  { data: BodyType<TruthAnchorRequest> },
+  TContext
+> => {
+  const mutationKey = ["searchTruthAnchor"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof searchTruthAnchor>>,
+    { data: BodyType<TruthAnchorRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return searchTruthAnchor(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SearchTruthAnchorMutationResult = NonNullable<
+  Awaited<ReturnType<typeof searchTruthAnchor>>
+>;
+export type SearchTruthAnchorMutationBody = BodyType<TruthAnchorRequest>;
+export type SearchTruthAnchorMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Verify a factual question against Harvard Dataverse
+ */
+export const useSearchTruthAnchor = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof searchTruthAnchor>>,
+    TError,
+    { data: BodyType<TruthAnchorRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof searchTruthAnchor>>,
+  TError,
+  { data: BodyType<TruthAnchorRequest> },
+  TContext
+> => {
+  return useMutation(getSearchTruthAnchorMutationOptions(options));
+};
+
+/**
+ * Matches the user's query against a curated catalog of free, keyless
+public APIs (Wikipedia, Open-Meteo weather, REST Countries, Open Library,
+USGS earthquakes, CoinGecko prices, ISS position), calls the highest-
+scoring entry, validates the response against the entry's declared zod
+schema, and returns a normalised summary. Each call is bounded by a
+per-API rolling-minute budget. Notable findings emit a structured
+`signal` envelope (shared with Ephemeroi via the convergence layer).
+
+ * @summary Pick a free public API from the catalog and call it
+ */
+export const getSearchExplorationUrl = () => {
+  return `/api/search/exploration`;
+};
+
+export const searchExploration = async (
+  explorationRequest: ExplorationRequest,
+  options?: RequestInit,
+): Promise<ExplorationResponse> => {
+  return customFetch<ExplorationResponse>(getSearchExplorationUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(explorationRequest),
+  });
+};
+
+export const getSearchExplorationMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof searchExploration>>,
+    TError,
+    { data: BodyType<ExplorationRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof searchExploration>>,
+  TError,
+  { data: BodyType<ExplorationRequest> },
+  TContext
+> => {
+  const mutationKey = ["searchExploration"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof searchExploration>>,
+    { data: BodyType<ExplorationRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return searchExploration(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type SearchExplorationMutationResult = NonNullable<
+  Awaited<ReturnType<typeof searchExploration>>
+>;
+export type SearchExplorationMutationBody = BodyType<ExplorationRequest>;
+export type SearchExplorationMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Pick a free public API from the catalog and call it
+ */
+export const useSearchExploration = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof searchExploration>>,
+    TError,
+    { data: BodyType<ExplorationRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof searchExploration>>,
+  TError,
+  { data: BodyType<ExplorationRequest> },
+  TContext
+> => {
+  return useMutation(getSearchExplorationMutationOptions(options));
+};
 
 /**
  * One-shot dashboard payload — settings, source counts, recent observations/reports/beliefs/contradictions, and loop status.

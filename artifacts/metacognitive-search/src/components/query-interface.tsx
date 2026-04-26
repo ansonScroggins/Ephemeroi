@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from "react";
 import { useGetSampleQueries } from "@workspace/api-client-react";
-import { Brain, Code2, Globe, ArrowUp, Loader2, Plus, Sparkles, X, Users, AlertTriangle } from "lucide-react";
+import { Brain, Code2, Globe, ArrowUp, Loader2, Plus, Sparkles, X, Users, AlertTriangle, BookCheck, Compass } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SearchMode, StartSearchOptions } from "@/hooks/use-search-stream";
 import type { StartSocietyOptions } from "@/hooks/use-society-stream";
@@ -33,6 +33,8 @@ const MODE_OPTIONS: Array<{ id: SearchMode; label: string; icon: typeof Brain }>
   { id: "code", label: "Code", icon: Code2 },
   { id: "web", label: "Web", icon: Globe },
   { id: "society", label: "Society", icon: Users },
+  { id: "verify", label: "Verify", icon: BookCheck },
+  { id: "explore", label: "Explore", icon: Compass },
 ];
 
 export function ChatComposer({ onSubmit, onSocietySubmit, isRunning, onQueryChange, onModeChange, prefill }: ChatComposerProps) {
@@ -111,6 +113,10 @@ export function ChatComposer({ onSubmit, onSocietySubmit, isRunning, onQueryChan
       ? "Optional: tell me what to focus on…"
       : mode === "society"
       ? "Topic for the agents to debate…"
+      : mode === "verify"
+      ? "What factual claim should I check against Dataverse?"
+      : mode === "explore"
+      ? "What should I look up via a public API?"
       : "Ask the live web…";
 
   return (
