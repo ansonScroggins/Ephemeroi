@@ -110,7 +110,13 @@ export async function updateSettings(
 
 // ===== Sources =====
 
-export type SourceKind = "rss" | "url" | "search" | "github" | "github_user";
+export type SourceKind =
+  | "rss"
+  | "url"
+  | "search"
+  | "github"
+  | "github_user"
+  | "gh_archive";
 
 export interface SourceRow {
   id: number;
@@ -390,6 +396,10 @@ function deriveLabel(kind: SourceKind, target: string): string {
   if (kind === "search") return `Search: ${target}`;
   if (kind === "github") return `GitHub: ${target}`;
   if (kind === "github_user") return `GitHub user: ${target}`;
+  if (kind === "gh_archive") {
+    const filter = target.trim() || "all events";
+    return `GH Archive: ${filter.length > 60 ? filter.slice(0, 57) + "…" : filter}`;
+  }
   try {
     const u = new URL(target);
     return u.hostname.replace(/^www\./, "");

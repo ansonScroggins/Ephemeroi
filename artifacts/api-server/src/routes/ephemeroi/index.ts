@@ -215,7 +215,7 @@ router.get("/ephemeroi/beliefs/by-source", async (req, res) => {
     res.status(400).json({ error: "kind and target query params required" });
     return;
   }
-  const allowed: ReadonlyArray<SourceKind> = ["rss", "url", "search", "github", "github_user"];
+  const allowed: ReadonlyArray<SourceKind> = ["rss", "url", "search", "github", "github_user", "gh_archive"];
   if (!allowed.includes(kindRaw as SourceKind)) {
     res.status(400).json({ error: `invalid kind, expected one of ${allowed.join(", ")}` });
     return;

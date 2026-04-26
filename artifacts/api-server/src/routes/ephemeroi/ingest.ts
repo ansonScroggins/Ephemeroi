@@ -11,6 +11,7 @@ import { bus } from "./bus";
 import { observationToWire } from "./wire";
 import { safePublicFetch } from "./guard";
 import { ingestGithub, ingestGithubUser } from "./ingest-github";
+import { ingestGhArchive } from "./ingest-gharchive";
 
 const MAX_ITEMS_PER_SOURCE = 8;
 const FETCH_TIMEOUT_MS = 12_000;
@@ -40,6 +41,9 @@ export async function ingestSource(source: SourceRow): Promise<{
       added = result.added;
     } else if (source.kind === "github_user") {
       const result = await ingestGithubUser(source);
+      added = result.added;
+    } else if (source.kind === "gh_archive") {
+      const result = await ingestGhArchive(source);
       added = result.added;
     }
     await markSourcePolled(source.id, null);

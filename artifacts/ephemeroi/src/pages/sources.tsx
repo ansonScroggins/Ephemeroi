@@ -10,7 +10,7 @@ import {
 } from "@workspace/api-client-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { Radio, Search, Link as LinkIcon, Trash2, Plus, AlertCircle, RefreshCw, Github, Users, Sparkles, ArrowUp, ArrowDown } from "lucide-react";
+import { Radio, Search, Link as LinkIcon, Trash2, Plus, AlertCircle, RefreshCw, Github, Users, Sparkles, ArrowUp, ArrowDown, Database } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -92,7 +92,7 @@ export default function Sources() {
     return m;
   }, [statesData]);
 
-  const [kind, setKind] = useState<"rss" | "url" | "search" | "github" | "github_user">("rss");
+  const [kind, setKind] = useState<"rss" | "url" | "search" | "github" | "github_user" | "gh_archive">("rss");
   const [target, setTarget] = useState("");
   const [label, setLabel] = useState("");
 
@@ -102,6 +102,12 @@ export default function Sources() {
   const githubUserPattern = /^([\w][\w-]*|https?:\/\/(?:www\.)?github\.com\/[\w][\w-]*\/?$)/i;
   const githubInvalid = kind === "github" && target.length > 0 && !githubPattern.test(target.trim());
   const githubUserInvalid = kind === "github_user" && target.length > 0 && !githubUserPattern.test(target.trim());
+  // gh_archive filter expression: comma-separated key:value pairs where key
+  // ∈ {repo, event, org}. Empty target is allowed (matches everything) but
+  // visually nudged against because it's almost certainly a mistake.
+  const ghArchivePattern = /^\s*(repo|event|org)\s*:\s*[\w./@-]+(?:\s*,\s*(repo|event|org)\s*:\s*[\w./@-]+)*\s*$/i;
+  const ghArchiveInvalid =
+    kind === "gh_archive" && target.length > 0 && !ghArchivePattern.test(target.trim());
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -118,6 +124,14 @@ export default function Sources() {
       toast({
         title: "Invalid GitHub user",
         description: "Use a username/org or a github.com/<user> URL.",
+        variant: "destructive",
+      });
+      return;
+    }
+    if (kind === "gh_archive" && target.trim().length > 0 && !ghArchivePattern.test(target.trim())) {
+      toast({
+        title: "Invalid GH Archive filter",
+        description: "Use comma-separated repo:/event:/org: pairs, e.g. repo:torvalds/,event:PullRequestEvent",
         variant: "destructive",
       });
       return;
@@ -157,6 +171,7 @@ export default function Sources() {
       case 'search': return <Search className="w-4 h-4" />;
       case 'github': return <Github className="w-4 h-4" />;
       case 'github_user': return <Users className="w-4 h-4" />;
+      case 'gh_archive': return <Database className="w-4 h-4" />;
       default: return <LinkIcon className="w-4 h-4" />;
     }
   };
@@ -165,11 +180,13 @@ export default function Sources() {
     kind === 'search' ? 'Search Query'
       : kind === 'github' ? 'GitHub Repo'
       : kind === 'github_user' ? 'GitHub User / Org'
+      : kind === 'gh_archive' ? 'Filter Expression'
       : 'URL';
   const targetPlaceholder =
     kind === 'search' ? 'e.g. "artificial intelligence advances"'
       : kind === 'github' ? 'owner/repo or https://github.com/owner/repo'
       : kind === 'github_user' ? 'username or https://github.com/username'
+      : kind === 'gh_archive' ? 'repo:torvalds/,event:PullRequestEvent'
       : 'https://...';
 
   if (isLoading) {
@@ -209,6 +226,7 @@ export default function Sources() {
                   <SelectItem value="search">Search Topic</SelectItem>
                   <SelectItem value="github">GitHub Repo</SelectItem>
                   <SelectItem value="github_user">GitHub User / Org</SelectItem>
+                  <SelectItem value="gh_archive">GH Archive (firehose)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
