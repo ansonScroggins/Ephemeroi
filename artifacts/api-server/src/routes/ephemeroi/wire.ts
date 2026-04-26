@@ -6,6 +6,7 @@ import type {
   SourceRow,
   SourceStateRow,
   SettingsRow,
+  TopicBeliefRow,
 } from "./store";
 
 export interface ObservationWire {
@@ -201,5 +202,60 @@ export function settingsToWire(s: SettingsRow): SettingsWire {
     telegramEnabled: s.telegramEnabled,
     novelty: { weight: s.noveltyWeight, decay: s.noveltyDecay },
     autonomy: { enabled: s.autonomyEnabled, maxSources: s.autonomyMaxSources },
+  };
+}
+
+export interface TopicBeliefHistoryWire {
+  stance: string;
+  confidence: number;
+  evidence?: string;
+  sourceKind?: string;
+  at: string;
+}
+
+export interface TopicBeliefWire {
+  id: number;
+  subject: string;
+  subjectKey: string;
+  stance: string;
+  confidence: number;
+  evidenceCount: number;
+  lastEvidence: string | null;
+  lastSourceKind: string | null;
+  history: TopicBeliefHistoryWire[];
+  firstSeenAt: string;
+  lastUpdatedAt: string;
+}
+
+/**
+ * Map a TopicBeliefRow to its wire representation.
+ *
+ * NOTE: `lastQuestion` is intentionally NOT serialized. It's stored in the DB
+ * for debugging / future use but never returned over HTTP, because the
+ * /ephemeroi/* surface is currently unauthenticated and the raw question
+ * text from a Telegram message can contain personal content. The other
+ * fields (subject, stance, confidence, capped evidence summary) are
+ * deliberately distilled / model-rewritten and safe to expose. If/when the
+ * surface gets auth, we can add `lastQuestion` back behind it.
+ */
+export function topicBeliefToWire(b: TopicBeliefRow): TopicBeliefWire {
+  return {
+    id: b.id,
+    subject: b.subject,
+    subjectKey: b.subjectKey,
+    stance: b.stance,
+    confidence: b.confidence,
+    evidenceCount: b.evidenceCount,
+    lastEvidence: b.lastEvidence,
+    lastSourceKind: b.lastSourceKind,
+    history: b.history.map((h) => ({
+      stance: h.stance,
+      confidence: h.confidence,
+      ...(h.evidence ? { evidence: h.evidence } : {}),
+      ...(h.sourceKind ? { sourceKind: h.sourceKind } : {}),
+      at: h.at,
+    })),
+    firstSeenAt: b.firstSeenAt.toISOString(),
+    lastUpdatedAt: b.lastUpdatedAt.toISOString(),
   };
 }

@@ -175,6 +175,64 @@ export const ephemeroiSourceStateTable = pgTable(
   }),
 );
 
+/**
+ * Topic beliefs — opinionated stances the bot has formed about a subject from
+ * Q&A / PDF interactions. Distinct from `ephemeroi_beliefs` (which is
+ * source-anchored, populated by the loop's reflection step). This table is
+ * keyed on a normalized subject string and is mutated *autonomously* after
+ * every Telegram answer: a small extraction pass turns each (question,
+ * answer) into zero-or-more `{subject, stance, confidence, evidence}`
+ * records that get upserted in place.
+ *
+ * `history` is a capped jsonb array (most-recent-first, ≤ HISTORY_CAP
+ * entries) so the UI can show the trajectory of a belief — "this used to
+ * be 0.4 leaning the other way, now it's 0.8" — without joining a separate
+ * audit table. Older entries are dropped when the cap is reached.
+ *
+ * `subjectKey` is the unique upsert key (slugified subject); `subject`
+ * preserves the human-readable form.
+ */
+export const ephemeroiTopicBeliefsTable = pgTable(
+  "ephemeroi_topic_beliefs",
+  {
+    id: serial("id").primaryKey(),
+    subject: text("subject").notNull(),
+    subjectKey: text("subject_key").notNull(),
+    stance: text("stance").notNull(),
+    confidence: doublePrecision("confidence").notNull().default(0),
+    evidenceCount: integer("evidence_count").notNull().default(1),
+    lastEvidence: text("last_evidence"),
+    lastSourceKind: text("last_source_kind"),
+    lastQuestion: text("last_question"),
+    history: jsonb("history")
+      .$type<
+        Array<{
+          stance: string;
+          confidence: number;
+          evidence?: string;
+          sourceKind?: string;
+          at: string;
+        }>
+      >()
+      .notNull()
+      .default([]),
+    firstSeenAt: timestamp("first_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastUpdatedAt: timestamp("last_updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    subjectKeyUq: uniqueIndex("ephemeroi_topic_beliefs_subject_key_uq").on(
+      t.subjectKey,
+    ),
+    lastUpdatedAtIdx: index(
+      "ephemeroi_topic_beliefs_last_updated_at_idx",
+    ).on(t.lastUpdatedAt),
+  }),
+);
+
 export const ephemeroiReportsTable = pgTable(
   "ephemeroi_reports",
   {

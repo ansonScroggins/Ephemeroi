@@ -7,6 +7,7 @@ import {
   ephemeroiContradictionsTable,
   ephemeroiReportsTable,
   ephemeroiSourceStateTable,
+  ephemeroiTopicBeliefsTable,
 } from "@workspace/db";
 import { eq, desc, asc, and, sql } from "drizzle-orm";
 
@@ -829,4 +830,197 @@ export async function markReportDelivered(id: number): Promise<void> {
 
 function clamp(x: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, x));
+}
+
+// ===== Topic beliefs (autonomous Q&A / PDF-driven) =====
+
+const TOPIC_HISTORY_CAP = 10;
+
+export interface TopicBeliefRow {
+  id: number;
+  subject: string;
+  subjectKey: string;
+  stance: string;
+  confidence: number;
+  evidenceCount: number;
+  lastEvidence: string | null;
+  lastSourceKind: string | null;
+  lastQuestion: string | null;
+  history: Array<{
+    stance: string;
+    confidence: number;
+    evidence?: string;
+    sourceKind?: string;
+    at: string;
+  }>;
+  firstSeenAt: Date;
+  lastUpdatedAt: Date;
+}
+
+export interface TopicBeliefUpsertInput {
+  subject: string;
+  stance: string;
+  confidence: number;
+  evidence?: string;
+  sourceKind?: string;
+  question?: string;
+}
+
+/**
+ * Slugify a subject string into a stable upsert key. Lowercase, strip
+ * non-alphanumerics down to single hyphens, trim, cap length. Trivial
+ * normalization on purpose — we'd rather have a few near-duplicates than
+ * over-collapse distinct subjects ("openai gpt-4o" vs "openai gpt-4o-mini").
+ */
+export function topicSubjectKey(subject: string): string {
+  return subject
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, 120);
+}
+
+/**
+ * Upsert a topic belief by subjectKey. On first sight: insert with
+ * evidenceCount=1 and a single-entry history. On subsequent sight: bump
+ * stance/confidence/evidence in place and prepend a history entry (capped
+ * at TOPIC_HISTORY_CAP). Returns the resulting row so callers can log the
+ * delta if useful.
+ */
+export async function upsertTopicBelief(
+  input: TopicBeliefUpsertInput,
+): Promise<TopicBeliefRow> {
+  const subject = input.subject.trim();
+  if (!subject) throw new Error("upsertTopicBelief: empty subject");
+  const subjectKey = topicSubjectKey(subject);
+  if (!subjectKey) throw new Error("upsertTopicBelief: subject normalizes to empty");
+
+  const stance = input.stance.trim();
+  const confidence = clamp(input.confidence, 0, 1);
+  const evidence = input.evidence?.trim() || null;
+  const sourceKind = input.sourceKind?.trim() || null;
+  const question = input.question?.trim() || null;
+  const now = new Date();
+
+  const newHistoryEntry = {
+    stance,
+    confidence,
+    ...(evidence ? { evidence } : {}),
+    ...(sourceKind ? { sourceKind } : {}),
+    at: now.toISOString(),
+  };
+
+  // Concurrency model: the Telegram pipeline fires extraction-and-upsert
+  // calls in detached promises, so two answers landing close together (or a
+  // typed Q&A and a PDF read) can race on the same subjectKey. We protect
+  // against two failure modes:
+  //   * Lost UPDATE (both writers see an existing row, both increment
+  //     evidenceCount/history off the same prior view, second write
+  //     overwrites first): handled by `db.transaction` + `SELECT FOR UPDATE`,
+  //     which serializes the read-modify-write on the row.
+  //   * Lost INSERT (both writers see "no row yet", both INSERT, the second
+  //     hits the unique_violation on subjectKey): handled by retrying the
+  //     whole transaction once on PostgreSQL error 23505 — the second pass
+  //     finds the winner's row and takes the UPDATE branch, so neither
+  //     writer's evidence/history entry is dropped.
+  // One retry is enough because after the conflict the row exists, and from
+  // then on every concurrent call goes through the FOR UPDATE path.
+  const run = () =>
+    db.transaction(async (tx) => {
+      const existing = await tx
+        .select()
+        .from(ephemeroiTopicBeliefsTable)
+        .where(eq(ephemeroiTopicBeliefsTable.subjectKey, subjectKey))
+        .for("update")
+        .limit(1);
+
+      if (existing.length === 0) {
+        const inserted = await tx
+          .insert(ephemeroiTopicBeliefsTable)
+          .values({
+            subject,
+            subjectKey,
+            stance,
+            confidence,
+            evidenceCount: 1,
+            lastEvidence: evidence,
+            lastSourceKind: sourceKind,
+            lastQuestion: question,
+            history: [newHistoryEntry],
+            firstSeenAt: now,
+            lastUpdatedAt: now,
+          })
+          .returning();
+        return rowToTopicBelief(inserted[0]!);
+      }
+
+      const prev = existing[0]!;
+      const trimmedHistory = [newHistoryEntry, ...(prev.history ?? [])].slice(
+        0,
+        TOPIC_HISTORY_CAP,
+      );
+      const updated = await tx
+        .update(ephemeroiTopicBeliefsTable)
+        .set({
+          // Keep the original human-readable subject the first time we saw
+          // it — re-extractions produce slightly different casings that all
+          // map to the same key, but the first form is usually the cleanest.
+          stance,
+          confidence,
+          evidenceCount: prev.evidenceCount + 1,
+          lastEvidence: evidence,
+          lastSourceKind: sourceKind,
+          lastQuestion: question,
+          history: trimmedHistory,
+          lastUpdatedAt: now,
+        })
+        .where(eq(ephemeroiTopicBeliefsTable.id, prev.id))
+        .returning();
+      return rowToTopicBelief(updated[0]!);
+    });
+
+  try {
+    return await run();
+  } catch (err) {
+    if (isUniqueViolation(err)) return await run();
+    throw err;
+  }
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  if (!err || typeof err !== "object") return false;
+  // node-postgres surfaces SQLSTATE on the thrown error as `code`. drizzle
+  // re-throws it unwrapped, so this works for both transaction layers.
+  const code = (err as { code?: unknown }).code;
+  return code === "23505";
+}
+
+export async function listTopicBeliefs(limit = 100): Promise<TopicBeliefRow[]> {
+  const rows = await db
+    .select()
+    .from(ephemeroiTopicBeliefsTable)
+    .orderBy(desc(ephemeroiTopicBeliefsTable.lastUpdatedAt))
+    .limit(limit);
+  return rows.map(rowToTopicBelief);
+}
+
+function rowToTopicBelief(
+  r: typeof ephemeroiTopicBeliefsTable.$inferSelect,
+): TopicBeliefRow {
+  return {
+    id: r.id,
+    subject: r.subject,
+    subjectKey: r.subjectKey,
+    stance: r.stance,
+    confidence: r.confidence,
+    evidenceCount: r.evidenceCount,
+    lastEvidence: r.lastEvidence,
+    lastSourceKind: r.lastSourceKind,
+    lastQuestion: r.lastQuestion,
+    history: (r.history ?? []) as TopicBeliefRow["history"],
+    firstSeenAt: r.firstSeenAt,
+    lastUpdatedAt: r.lastUpdatedAt,
+  };
 }

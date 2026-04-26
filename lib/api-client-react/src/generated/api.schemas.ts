@@ -621,6 +621,45 @@ export interface EphemeroiBeliefsResponse {
   beliefs: EphemeroiBelief[];
 }
 
+export interface EphemeroiTopicBeliefHistoryEntry {
+  stance: string;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  confidence: number;
+  evidence?: string;
+  sourceKind?: string;
+  at: string;
+}
+
+export interface EphemeroiTopicBelief {
+  id: number;
+  subject: string;
+  subjectKey: string;
+  /** The current opinionated stance about the subject. */
+  stance: string;
+  /**
+   * How strongly the bot holds this stance based on accumulated evidence.
+   * @minimum 0
+   * @maximum 1
+   */
+  confidence: number;
+  /** Number of distinct exchanges that have written to this belief. */
+  evidenceCount: number;
+  lastEvidence?: string | null;
+  /** Which channel last touched this belief — "qa" (typed Telegram question) or "pdf" (uploaded PDF). */
+  lastSourceKind?: string | null;
+  /** Recent stance changes, newest first, capped at 10 entries. */
+  history: EphemeroiTopicBeliefHistoryEntry[];
+  firstSeenAt: string;
+  lastUpdatedAt: string;
+}
+
+export interface EphemeroiTopicBeliefsResponse {
+  beliefs: EphemeroiTopicBelief[];
+}
+
 export type EphemeroiBeliefsBySourceResponseContradictionsItem = {
   id: number;
   summary: string;
@@ -774,6 +813,14 @@ export interface EphemeroiState {
 }
 
 export type ListEphemeroiObservationsParams = {
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+};
+
+export type ListEphemeroiTopicBeliefsParams = {
   /**
    * @minimum 1
    * @maximum 500

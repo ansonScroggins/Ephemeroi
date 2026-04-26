@@ -722,6 +722,84 @@ export const ListEphemeroiBeliefsResponse = zod.object({
 });
 
 /**
+ * Opinionated stances Ephemeroi has formed about specific named subjects
+as a side effect of Telegram Q&A and PDF reads. Distinct from
+`/ephemeroi/beliefs`, which is the source-anchored loop output.
+Each row carries the current stance/confidence plus a capped history
+of how it has moved over time.
+
+ * @summary List autonomous topic beliefs (Q&A / PDF-driven)
+ */
+export const listEphemeroiTopicBeliefsQueryLimitDefault = 100;
+export const listEphemeroiTopicBeliefsQueryLimitMax = 500;
+
+export const ListEphemeroiTopicBeliefsQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listEphemeroiTopicBeliefsQueryLimitMax)
+    .default(listEphemeroiTopicBeliefsQueryLimitDefault),
+});
+
+export const listEphemeroiTopicBeliefsResponseBeliefsItemConfidenceMin = 0;
+export const listEphemeroiTopicBeliefsResponseBeliefsItemConfidenceMax = 1;
+
+export const listEphemeroiTopicBeliefsResponseBeliefsItemHistoryItemConfidenceMin = 0;
+export const listEphemeroiTopicBeliefsResponseBeliefsItemHistoryItemConfidenceMax = 1;
+
+export const ListEphemeroiTopicBeliefsResponse = zod.object({
+  beliefs: zod.array(
+    zod.object({
+      id: zod.number(),
+      subject: zod.string(),
+      subjectKey: zod.string(),
+      stance: zod
+        .string()
+        .describe("The current opinionated stance about the subject."),
+      confidence: zod
+        .number()
+        .min(listEphemeroiTopicBeliefsResponseBeliefsItemConfidenceMin)
+        .max(listEphemeroiTopicBeliefsResponseBeliefsItemConfidenceMax)
+        .describe(
+          "How strongly the bot holds this stance based on accumulated evidence.",
+        ),
+      evidenceCount: zod
+        .number()
+        .describe(
+          "Number of distinct exchanges that have written to this belief.",
+        ),
+      lastEvidence: zod.string().nullish(),
+      lastSourceKind: zod
+        .string()
+        .nullish()
+        .describe(
+          'Which channel last touched this belief — \"qa\" (typed Telegram question) or \"pdf\" (uploaded PDF).',
+        ),
+      history: zod
+        .array(
+          zod.object({
+            stance: zod.string(),
+            confidence: zod
+              .number()
+              .min(
+                listEphemeroiTopicBeliefsResponseBeliefsItemHistoryItemConfidenceMin,
+              )
+              .max(
+                listEphemeroiTopicBeliefsResponseBeliefsItemHistoryItemConfidenceMax,
+              ),
+            evidence: zod.string().optional(),
+            sourceKind: zod.string().optional(),
+            at: zod.coerce.date(),
+          }),
+        )
+        .describe("Recent stance changes, newest first, capped at 10 entries."),
+      firstSeenAt: zod.coerce.date(),
+      lastUpdatedAt: zod.coerce.date(),
+    }),
+  ),
+});
+
+/**
  * Bridge endpoint used by Metacog (and other consumers) to ask Ephemeroi
 what it currently believes about a single source — most usefully, a
 github repo it is watching. Returns beliefs whose `originSourceId`

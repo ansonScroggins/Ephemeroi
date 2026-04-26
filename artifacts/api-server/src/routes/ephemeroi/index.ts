@@ -10,6 +10,8 @@ import {
   ListEphemeroiObservationsQueryParams,
   ListEphemeroiObservationsResponse,
   ListEphemeroiBeliefsResponse,
+  ListEphemeroiTopicBeliefsResponse,
+  ListEphemeroiTopicBeliefsQueryParams,
   ListEphemeroiContradictionsResponse,
   ListEphemeroiReportsQueryParams,
   ListEphemeroiReportsResponse,
@@ -30,6 +32,7 @@ import {
   listRecentObservations,
   listBeliefs,
   listBeliefsBySource,
+  listTopicBeliefs,
   listContradictions,
   listRecentReports,
   type SourceKind,
@@ -43,6 +46,7 @@ import {
   sourceToWire,
   sourceStateToWire,
   settingsToWire,
+  topicBeliefToWire,
 } from "./wire";
 import { ephemeroiLoop, InFlightError } from "./loop";
 import { startTelegramAnswerLoop } from "./telegramAnswer";
@@ -365,6 +369,28 @@ router.get("/ephemeroi/beliefs", async (_req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /ephemeroi/beliefs failed");
     res.status(500).json({ error: "Failed to list beliefs" });
+  }
+});
+
+router.get("/ephemeroi/topic-beliefs", async (req, res) => {
+  // Use safeParse so a bad ?limit= becomes a 400, matching the rest of the
+  // ephemeroi routes (a parse throw would otherwise be hidden by the broad
+  // catch below as a 500).
+  const parsed = ListEphemeroiTopicBeliefsQueryParams.safeParse(req.query);
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid query parameters" });
+    return;
+  }
+  try {
+    const beliefs = await listTopicBeliefs(parsed.data.limit ?? 100);
+    res.json(
+      ListEphemeroiTopicBeliefsResponse.parse({
+        beliefs: beliefs.map(topicBeliefToWire),
+      }),
+    );
+  } catch (err) {
+    logger.error({ err }, "GET /ephemeroi/topic-beliefs failed");
+    res.status(500).json({ error: "Failed to list topic beliefs" });
   }
 });
 

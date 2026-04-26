@@ -34,6 +34,7 @@ import type {
   EphemeroiSourceStatesResponse,
   EphemeroiSourcesResponse,
   EphemeroiState,
+  EphemeroiTopicBeliefsResponse,
   ErrorResponse,
   ExplorationRequest,
   ExplorationResponse,
@@ -41,6 +42,7 @@ import type {
   ListEphemeroiBeliefsBySourceParams,
   ListEphemeroiObservationsParams,
   ListEphemeroiReportsParams,
+  ListEphemeroiTopicBeliefsParams,
   MetacognitiveSearchRequest,
   MetacognitiveSearchSseEvent,
   SampleQueriesResponse,
@@ -1242,6 +1244,118 @@ export function useListEphemeroiBeliefs<
   request?: SecondParameter<typeof customFetch>;
 }): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
   const queryOptions = getListEphemeroiBeliefsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Opinionated stances Ephemeroi has formed about specific named subjects
+as a side effect of Telegram Q&A and PDF reads. Distinct from
+`/ephemeroi/beliefs`, which is the source-anchored loop output.
+Each row carries the current stance/confidence plus a capped history
+of how it has moved over time.
+
+ * @summary List autonomous topic beliefs (Q&A / PDF-driven)
+ */
+export const getListEphemeroiTopicBeliefsUrl = (
+  params?: ListEphemeroiTopicBeliefsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/ephemeroi/topic-beliefs?${stringifiedParams}`
+    : `/api/ephemeroi/topic-beliefs`;
+};
+
+export const listEphemeroiTopicBeliefs = async (
+  params?: ListEphemeroiTopicBeliefsParams,
+  options?: RequestInit,
+): Promise<EphemeroiTopicBeliefsResponse> => {
+  return customFetch<EphemeroiTopicBeliefsResponse>(
+    getListEphemeroiTopicBeliefsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListEphemeroiTopicBeliefsQueryKey = (
+  params?: ListEphemeroiTopicBeliefsParams,
+) => {
+  return [`/api/ephemeroi/topic-beliefs`, ...(params ? [params] : [])] as const;
+};
+
+export const getListEphemeroiTopicBeliefsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEphemeroiTopicBeliefs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListEphemeroiTopicBeliefsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEphemeroiTopicBeliefs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListEphemeroiTopicBeliefsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEphemeroiTopicBeliefs>>
+  > = ({ signal }) =>
+    listEphemeroiTopicBeliefs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiTopicBeliefs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEphemeroiTopicBeliefsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEphemeroiTopicBeliefs>>
+>;
+export type ListEphemeroiTopicBeliefsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List autonomous topic beliefs (Q&A / PDF-driven)
+ */
+
+export function useListEphemeroiTopicBeliefs<
+  TData = Awaited<ReturnType<typeof listEphemeroiTopicBeliefs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListEphemeroiTopicBeliefsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEphemeroiTopicBeliefs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEphemeroiTopicBeliefsQueryOptions(
+    params,
+    options,
+  );
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

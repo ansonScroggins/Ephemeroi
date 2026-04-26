@@ -295,6 +295,33 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EphemeroiBeliefsResponse"
+  /ephemeroi/topic-beliefs:
+    get:
+      operationId: listEphemeroiTopicBeliefs
+      tags: [ephemeroi]
+      summary: List autonomous topic beliefs (Q&A / PDF-driven)
+      description: |
+        Opinionated stances Ephemeroi has formed about specific named subjects
+        as a side effect of Telegram Q&A and PDF reads. Distinct from
+        `/ephemeroi/beliefs`, which is the source-anchored loop output.
+        Each row carries the current stance/confidence plus a capped history
+        of how it has moved over time.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Current topic beliefs, most recently updated first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiTopicBeliefsResponse"
   /ephemeroi/beliefs/by-source:
     get:
       operationId: listEphemeroiBeliefsBySource
@@ -1231,6 +1258,84 @@ components:
           type: array
           items:
             $ref: "#/components/schemas/EphemeroiBelief"
+      required: [beliefs]
+
+    EphemeroiTopicBeliefHistoryEntry:
+      type: object
+      properties:
+        stance:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        evidence:
+          type: string
+        sourceKind:
+          type: string
+        at:
+          type: string
+          format: date-time
+      required: [stance, confidence, at]
+
+    EphemeroiTopicBelief:
+      type: object
+      properties:
+        id:
+          type: integer
+        subject:
+          type: string
+        subjectKey:
+          type: string
+        stance:
+          type: string
+          description: The current opinionated stance about the subject.
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: How strongly the bot holds this stance based on accumulated evidence.
+        evidenceCount:
+          type: integer
+          description: Number of distinct exchanges that have written to this belief.
+        lastEvidence:
+          type: string
+          nullable: true
+        lastSourceKind:
+          type: string
+          nullable: true
+          description: Which channel last touched this belief — "qa" (typed Telegram question) or "pdf" (uploaded PDF).
+        history:
+          type: array
+          description: Recent stance changes, newest first, capped at 10 entries.
+          items:
+            $ref: "#/components/schemas/EphemeroiTopicBeliefHistoryEntry"
+        firstSeenAt:
+          type: string
+          format: date-time
+        lastUpdatedAt:
+          type: string
+          format: date-time
+      required:
+        [
+          id,
+          subject,
+          subjectKey,
+          stance,
+          confidence,
+          evidenceCount,
+          history,
+          firstSeenAt,
+          lastUpdatedAt,
+        ]
+
+    EphemeroiTopicBeliefsResponse:
+      type: object
+      properties:
+        beliefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiTopicBelief"
       required: [beliefs]
 
     EphemeroiBeliefsBySourceResponse:

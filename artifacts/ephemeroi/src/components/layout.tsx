@@ -1,6 +1,6 @@
 import { ReactNode } from "react";
 import { Link, useLocation } from "wouter";
-import { Activity, BookOpen, AlertTriangle, FileText, Settings, Radio, Eye } from "lucide-react";
+import { Activity, BookOpen, AlertTriangle, FileText, Settings, Radio, Eye, Brain } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useEphemeroiStream } from "@/hooks/use-ephemeroi-stream";
 
@@ -18,6 +18,7 @@ export function Layout({ children }: LayoutProps) {
     { href: "/", label: "Overview", icon: Eye },
     { href: "/sources", label: "Sources", icon: Radio },
     { href: "/beliefs", label: "Beliefs", icon: BookOpen },
+    { href: "/topic-beliefs", label: "Opinions", icon: Brain },
     { href: "/contradictions", label: "Tensions", icon: AlertTriangle },
     { href: "/reports", label: "Reports", icon: FileText },
     { href: "/settings", label: "Settings", icon: Settings },

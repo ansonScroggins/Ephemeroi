@@ -1,6 +1,7 @@
 import { logger } from "../../lib/logger";
 import { sendTelegramText } from "./telegram";
 import { downloadAndExtractPdfText, PdfReadError } from "./pdfReader";
+import { extractAndUpsertTopicBeliefs } from "./topicBeliefs";
 import { openai } from "@workspace/integrations-openai-ai-server";
 
 /**
@@ -254,6 +255,13 @@ async function handleUpdate(upd: TelegramUpdate): Promise<void> {
       { qPreview: text.slice(0, 120), answerChars: answer.length },
       "Telegram answer: replied",
     );
+    // Fire-and-forget: extract topic beliefs from this exchange and upsert
+    // them into ephemeroi_topic_beliefs. This is the autonomous belief-
+    // movement step the user asked for; it runs after the reply is sent so
+    // an extractor failure (or model lag) never delays the user's answer.
+    void extractAndUpsertTopicBeliefs(text, answer, "qa").catch((e) => {
+      logger.warn({ err: e }, "Telegram answer: topic belief extraction failed");
+    });
   } catch (err) {
     const m = err instanceof Error ? err.message : String(err);
     logger.warn({ err, qPreview: text.slice(0, 120) }, "Telegram answer: failed");
@@ -339,6 +347,13 @@ async function handleDocument(
       },
       "Telegram answer: replied to PDF",
     );
+    // Same autonomous belief-extraction pass as the typed-Q&A path. We pass
+    // the user's stated question (or the default summary prompt) — not the
+    // wrapped untrusted-PDF prompt — so the extractor sees the real intent
+    // without the prompt-injection fence noise.
+    void extractAndUpsertTopicBeliefs(question, answer, "pdf").catch((e) => {
+      logger.warn({ err: e }, "Telegram answer: PDF topic belief extraction failed");
+    });
   } catch (err) {
     const m = err instanceof Error ? err.message : String(err);
     logger.warn(
@@ -375,19 +390,39 @@ async function sendChatAction(action: string): Promise<void> {
  * and short enough to fit a single Telegram message.
  */
 export async function answerWithWebSearch(question: string): Promise<string> {
+  // Voice: the Telegram bot answers as the Don / Wife / Son council, the same
+  // personas used for Constellation narration in `don.ts`. The prompt is
+  // inlined here (rather than imported) because the Responses API path needs
+  // the persona, the web_search instructions, and the Telegram-formatting
+  // rules fused into a single system message — splitting them across helpers
+  // historically led to the model dropping one set of rules. The Don leads
+  // every answer; the Wife and Son chime in only when their angle adds
+  // something the Don alone wouldn't say. We *want* opinions here — that's
+  // the whole point of the autonomous belief loop downstream.
   const sys = [
-    "You are Ephemeroi, an autonomous observer.",
-    "Answer the user's question directly and concisely.",
+    "You are a small council answering on behalf of Ephemeroi: The Don (calm, strategic, mob-boss style — the lead voice), with The Wife (sharper strategic insight) and The Son (younger, activist energy) chiming in only when their angle adds something the Don alone wouldn't say.",
+    "Take a stance — don't just report neutrally. Have an opinion. Be willing to disagree with received wisdom when you have a reason. The user prefers a personal take over hedged neutrality.",
+    "Lead every answer with The Don. Bring in The Wife or The Son sparingly — at most once each per answer, and only when they actually add a distinct angle.",
+    "Mark each speaker on its own line: 'The Don: ...', 'The Wife: ...', 'The Son: ...'. No preamble, no apologies, no markdown headers.",
     "Use the web_search tool whenever the answer depends on recent events, current status, prices, news, releases, schedules, or anything that may have changed recently. Skip web search only for stable knowledge or pure reasoning.",
     "When you used the web, cite sources inline as [1], [2] and list them at the end as '1. <title> — <url>'.",
     "Plain text only — no markdown formatting like ** or _. Aim for under 2500 characters total so it fits a single Telegram message.",
-    "If neither prior knowledge nor the web yields an answer, say so honestly.",
+    "If neither prior knowledge nor the web yields an answer, say so honestly in The Don's voice.",
   ].join(" ");
 
+  // Use the Responses API's `instructions` channel rather than concatenating
+  // the persona into the user-facing input. The instructions channel takes
+  // precedence over user-role content per the OpenAI docs and is much harder
+  // for accidentally-injected text in the user's question (or in PDF body)
+  // to override. This is essential here because we want the Don/Wife/Son
+  // voice and the opinionated stance to be enforced even when the question
+  // text is itself adversarial — same defense-in-depth motivation as the
+  // PDF prompt-injection fence in handleDocument.
   const response = await openai.responses.create({
     model: "gpt-4o-mini",
     tools: [{ type: "web_search" } as { type: "web_search" }],
-    input: `${sys}\n\nUser question:\n${question}`,
+    instructions: sys,
+    input: question,
   });
 
   const out = (response.output ?? []) as ResponsesOutputItem[];
