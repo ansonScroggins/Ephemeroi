@@ -103,7 +103,7 @@ export default function Sources() {
   const githubInvalid = kind === "github" && target.length > 0 && !githubPattern.test(target.trim());
   const githubUserInvalid = kind === "github_user" && target.length > 0 && !githubUserPattern.test(target.trim());
   // gh_archive filter expression: comma-separated key:value pairs where key
-  // ∈ {repo, event, org}. Empty target is allowed (matches everything) but
+  // ∈ {repo, event, org}. Target is required (input has `required` attr) and
   // visually nudged against because it's almost certainly a mistake.
   const ghArchivePattern = /^\s*(repo|event|org)\s*:\s*[\w./@-]+(?:\s*,\s*(repo|event|org)\s*:\s*[\w./@-]+)*\s*$/i;
   const ghArchiveInvalid =
@@ -241,7 +241,7 @@ export default function Sources() {
                 placeholder={targetPlaceholder}
                 className="bg-background"
                 required
-                aria-invalid={githubInvalid || githubUserInvalid}
+                aria-invalid={githubInvalid || githubUserInvalid || ghArchiveInvalid}
               />
               {githubInvalid && (
                 <p className="text-xs text-destructive">
@@ -253,9 +253,19 @@ export default function Sources() {
                   Use a github username/org name or a <code>github.com/&lt;user&gt;</code> URL.
                 </p>
               )}
+              {ghArchiveInvalid && (
+                <p className="text-xs text-destructive">
+                  Use comma-separated <code>key:value</code> pairs where key is <code>repo</code>, <code>event</code>, or <code>org</code> (e.g. <code>event:ReleaseEvent,org:nodejs</code>).
+                </p>
+              )}
               {kind === 'github_user' && !githubUserInvalid && (
                 <p className="text-xs text-muted-foreground">
                   Watches up to 30 of this user's most-recently-pushed public repos (skips forks &amp; archived).
+                </p>
+              )}
+              {kind === 'gh_archive' && !ghArchiveInvalid && (
+                <p className="text-xs text-muted-foreground">
+                  Filter narrows the hourly GH event firehose. AND-combined; at least one filter required.
                 </p>
               )}
             </div>
