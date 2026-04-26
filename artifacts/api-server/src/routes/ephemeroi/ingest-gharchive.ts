@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
-import { Readable, Transform } from "node:stream";
+import { Readable } from "node:stream";
+import type { ReadableStream as NodeWebReadableStream } from "node:stream/web";
 import { createGunzip } from "node:zlib";
 import { createInterface } from "node:readline";
 import { logger } from "../../lib/logger";
@@ -43,12 +44,17 @@ import {
  */
 
 // ---- caps ----
-// Compressed dumps are typically 30-100MB. 80MB is a generous ceiling that
-// still bounds memory + bandwidth. If the cap trips we still process the
-// events parsed so far, then advance the cursor (we read what we got).
-const MAX_DOWNLOADED_BYTES = 80 * 1024 * 1024;
+// Hard ceiling on a single hour's compressed size. Real hours are
+// 30-100MB. Anything larger almost certainly means the URL is wrong /
+// gharchive is misbehaving — we skip it (and advance the cursor) rather
+// than risk OOM. Enforced via Content-Length pre-check, NOT mid-stream
+// truncation (truncating a gzip member produces a Z_BUF_ERROR which
+// would prevent the cursor from advancing and stall the source forever).
+const MAX_DOWNLOADED_BYTES = 120 * 1024 * 1024;
 // Upper bound on `JSON.parse` calls per cycle so a malformed / pathological
-// dump can't burn the loop. Real hours are ~150-300K events.
+// dump can't burn the loop. Real hours are ~150-300K events. This is also
+// the implicit memory ceiling when Content-Length is absent (300K events ×
+// ~500 bytes/event ≈ 150MB raw, safely below process limits).
 const MAX_EVENTS_PARSED = 300_000;
 // After filtering, hard cap on how many observations we hand to the
 // reflection pipeline per cycle. The rest is intentionally dropped.
@@ -70,7 +76,7 @@ interface GhEvent {
   actor?: { login?: string };
   repo?: { name?: string };
   org?: { login?: string };
-  payload?: Record<string, unknown>;
+  payload?: unknown;
   created_at?: string;
 }
 
@@ -78,6 +84,22 @@ interface ParsedFilter {
   repos: string[]; // lower-case prefixes of "owner/repo"
   events: string[]; // exact event type names
   orgs: string[]; // lower-case org / owner logins
+}
+
+// ---- narrowing helpers (avoid `any` for the heterogeneous payload shape) ----
+function asObj(v: unknown): Record<string, unknown> | undefined {
+  return v !== null && typeof v === "object" && !Array.isArray(v)
+    ? (v as Record<string, unknown>)
+    : undefined;
+}
+function asStr(v: unknown): string | undefined {
+  return typeof v === "string" ? v : undefined;
+}
+function asNum(v: unknown): number | undefined {
+  return typeof v === "number" ? v : undefined;
+}
+function asArr(v: unknown): unknown[] | undefined {
+  return Array.isArray(v) ? v : undefined;
 }
 
 function parseFilter(target: string): ParsedFilter {
@@ -169,69 +191,67 @@ function renderEvent(
   const repo = ev.repo?.name ?? "unknown";
   const actor = ev.actor?.login ?? "unknown";
   const type = ev.type ?? "Event";
-  const payload = (ev.payload ?? {}) as Record<string, any>;
+  const payload = asObj(ev.payload) ?? {};
   let title = `[${repo}] ${type} by ${actor}`;
   let snippet = `${type} on ${repo} by ${actor}`;
   let url: string | null = null;
 
   if (type === "PushEvent") {
-    const commits: any[] = Array.isArray(payload["commits"])
-      ? payload["commits"]
-      : [];
+    const commits = asArr(payload["commits"]) ?? [];
+    const head = asStr(asObj(commits[0])?.["message"])?.split("\n")[0] ?? "";
+    const ref = asStr(payload["ref"]) ?? "?";
     const count = commits.length;
-    const head = commits[0]?.message?.split("\n")[0] ?? "";
-    const ref = (payload["ref"] as string | undefined) ?? "?";
     title = `[${repo}] push (${count} commit${count === 1 ? "" : "s"}) → ${ref} by ${actor}`;
     snippet =
       `${count} commit${count === 1 ? "" : "s"} pushed to ${ref}` +
       (head ? `\nHEAD: ${head}` : "");
     url = `https://github.com/${repo}/commits/${ref.replace(/^refs\/heads\//, "")}`;
   } else if (type === "PullRequestEvent") {
-    const action = (payload["action"] as string | undefined) ?? "";
-    const pr = payload["pull_request"] as any;
-    const num = pr?.number ?? "?";
-    title = `[${repo}] PR ${action} #${num}: ${(pr?.title ?? "").slice(0, 140)} by ${actor}`;
-    snippet = (pr?.body ?? "").slice(0, 800);
-    url = pr?.html_url ?? null;
+    const action = asStr(payload["action"]) ?? "";
+    const pr = asObj(payload["pull_request"]);
+    const num = asNum(pr?.["number"]) ?? "?";
+    title = `[${repo}] PR ${action} #${num}: ${(asStr(pr?.["title"]) ?? "").slice(0, 140)} by ${actor}`;
+    snippet = (asStr(pr?.["body"]) ?? "").slice(0, 800);
+    url = asStr(pr?.["html_url"]) ?? null;
   } else if (type === "PullRequestReviewEvent") {
-    const pr = payload["pull_request"] as any;
-    const review = payload["review"] as any;
-    title = `[${repo}] PR review (${review?.state ?? "?"}) on #${pr?.number ?? "?"} by ${actor}`;
-    snippet = (review?.body ?? "").slice(0, 600);
-    url = review?.html_url ?? null;
+    const pr = asObj(payload["pull_request"]);
+    const review = asObj(payload["review"]);
+    title = `[${repo}] PR review (${asStr(review?.["state"]) ?? "?"}) on #${asNum(pr?.["number"]) ?? "?"} by ${actor}`;
+    snippet = (asStr(review?.["body"]) ?? "").slice(0, 600);
+    url = asStr(review?.["html_url"]) ?? null;
   } else if (type === "IssuesEvent") {
-    const action = (payload["action"] as string | undefined) ?? "";
-    const issue = payload["issue"] as any;
-    title = `[${repo}] issue ${action} #${issue?.number ?? "?"}: ${(issue?.title ?? "").slice(0, 140)} by ${actor}`;
-    snippet = (issue?.body ?? "").slice(0, 800);
-    url = issue?.html_url ?? null;
+    const action = asStr(payload["action"]) ?? "";
+    const issue = asObj(payload["issue"]);
+    title = `[${repo}] issue ${action} #${asNum(issue?.["number"]) ?? "?"}: ${(asStr(issue?.["title"]) ?? "").slice(0, 140)} by ${actor}`;
+    snippet = (asStr(issue?.["body"]) ?? "").slice(0, 800);
+    url = asStr(issue?.["html_url"]) ?? null;
   } else if (type === "IssueCommentEvent") {
-    const issue = payload["issue"] as any;
-    const comment = payload["comment"] as any;
-    title = `[${repo}] comment on #${issue?.number ?? "?"}: ${(issue?.title ?? "").slice(0, 120)} by ${actor}`;
-    snippet = (comment?.body ?? "").slice(0, 600);
-    url = comment?.html_url ?? null;
+    const issue = asObj(payload["issue"]);
+    const comment = asObj(payload["comment"]);
+    title = `[${repo}] comment on #${asNum(issue?.["number"]) ?? "?"}: ${(asStr(issue?.["title"]) ?? "").slice(0, 120)} by ${actor}`;
+    snippet = (asStr(comment?.["body"]) ?? "").slice(0, 600);
+    url = asStr(comment?.["html_url"]) ?? null;
   } else if (type === "ReleaseEvent") {
-    const rel = payload["release"] as any;
-    title = `[${repo}] release: ${rel?.name ?? rel?.tag_name ?? "?"} by ${actor}`;
-    snippet = (rel?.body ?? "").slice(0, 800);
-    url = rel?.html_url ?? null;
+    const rel = asObj(payload["release"]);
+    title = `[${repo}] release: ${asStr(rel?.["name"]) ?? asStr(rel?.["tag_name"]) ?? "?"} by ${actor}`;
+    snippet = (asStr(rel?.["body"]) ?? "").slice(0, 800);
+    url = asStr(rel?.["html_url"]) ?? null;
   } else if (type === "ForkEvent") {
-    const forkee = payload["forkee"] as any;
-    title = `[${repo}] forked → ${forkee?.full_name ?? "?"} by ${actor}`;
-    snippet = `Fork created: ${forkee?.full_name ?? "?"}`;
-    url = forkee?.html_url ?? null;
+    const forkee = asObj(payload["forkee"]);
+    title = `[${repo}] forked → ${asStr(forkee?.["full_name"]) ?? "?"} by ${actor}`;
+    snippet = `Fork created: ${asStr(forkee?.["full_name"]) ?? "?"}`;
+    url = asStr(forkee?.["html_url"]) ?? null;
   } else if (type === "WatchEvent") {
     title = `[${repo}] starred by ${actor}`;
     snippet = `${actor} starred ${repo}`;
   } else if (type === "CreateEvent") {
-    const refType = (payload["ref_type"] as string | undefined) ?? "";
-    const ref = (payload["ref"] as string | undefined) ?? "";
+    const refType = asStr(payload["ref_type"]) ?? "";
+    const ref = asStr(payload["ref"]) ?? "";
     title = `[${repo}] created ${refType}${ref ? ` ${ref}` : ""} by ${actor}`;
     snippet = `${refType}${ref ? ` ${ref}` : ""} created on ${repo}`;
   } else if (type === "DeleteEvent") {
-    const refType = (payload["ref_type"] as string | undefined) ?? "";
-    const ref = (payload["ref"] as string | undefined) ?? "";
+    const refType = asStr(payload["ref_type"]) ?? "";
+    const ref = asStr(payload["ref"]) ?? "";
     title = `[${repo}] deleted ${refType}${ref ? ` ${ref}` : ""} by ${actor}`;
     snippet = `${refType}${ref ? ` ${ref}` : ""} deleted from ${repo}`;
   }
@@ -323,39 +343,62 @@ export async function ingestGhArchive(
     );
   }
 
-  // Pipeline: web ReadableStream → Node Readable → byte counter → gunzip → readline
-  const nodeStream = Readable.fromWeb(resp.body as any);
-  let downloaded = 0;
-  let bytesCapHit = false;
-  const counter = new Transform({
-    transform(chunk: Buffer, _enc, cb) {
-      downloaded += chunk.length;
-      if (downloaded > MAX_DOWNLOADED_BYTES) {
-        // Tell downstream "no more data" AND tear down upstream so the
-        // underlying TCP socket closes immediately — without the explicit
-        // nodeStream.destroy() the HTTP body keeps being buffered into
-        // counter even though we've stopped reading from it, leaking
-        // memory until backpressure eventually fires.
-        bytesCapHit = true;
-        this.push(null);
-        nodeStream.destroy();
-        cb();
-      } else {
-        cb(null, chunk);
-      }
-    },
-  });
+  // Pre-flight size check via Content-Length. We refuse to start
+  // streaming a gzip larger than MAX_DOWNLOADED_BYTES because (a) it's
+  // almost certainly malformed and (b) truncating mid-gzip produces a
+  // Z_BUF_ERROR that would throw out of the for-await loop and prevent
+  // the cursor from advancing — stalling the source forever on the same
+  // bad hour. Skipping the hour AND advancing the cursor breaks the
+  // stall. If Content-Length is absent (rare for gharchive), we proceed
+  // and rely on MAX_EVENTS_PARSED as the implicit memory ceiling.
+  const contentLengthHeader = resp.headers.get("content-length");
+  const contentLength = contentLengthHeader
+    ? Number(contentLengthHeader)
+    : null;
+  if (contentLength !== null && Number.isFinite(contentLength) && contentLength > MAX_DOWNLOADED_BYTES) {
+    clearTimeout(timer);
+    try {
+      // Cancel the in-flight body so the socket closes promptly.
+      controller.abort();
+    } catch {
+      // best-effort
+    }
+    await updateSourceCursor(source.id, { lastFetchedHour: targetHour });
+    logger.warn(
+      {
+        sourceId: source.id,
+        targetHour,
+        contentLength,
+        cap: MAX_DOWNLOADED_BYTES,
+      },
+      `GH Archive: hour=${targetHour} content-length ${contentLength} exceeds cap ${MAX_DOWNLOADED_BYTES}; skipping (cursor advanced)`,
+    );
+    return { added: [] };
+  }
+
+  // Pipeline: web ReadableStream → Node Readable → gunzip → readline.
+  // The node:stream/web ReadableStream type is structurally identical to
+  // the global one but TypeScript treats them as distinct, so cast through
+  // the typed shape rather than `any`.
+  const nodeStream = Readable.fromWeb(
+    resp.body as unknown as NodeWebReadableStream<Uint8Array>,
+  );
   const gunzip = createGunzip();
-  // Errors on each leg of the pipe must surface to the for-await loop, so
-  // forward them onto the readline input stream.
+  // Forward fetch-side errors onto the readline input stream so the
+  // for-await loop rejects rather than silently hanging.
   nodeStream.on("error", (err) => gunzip.destroy(err));
-  counter.on("error", (err) => gunzip.destroy(err));
-  nodeStream.pipe(counter).pipe(gunzip);
+  nodeStream.pipe(gunzip);
 
   const rl = createInterface({ input: gunzip, crlfDelay: Infinity });
 
   let parsed = 0;
   let matched = 0;
+  let downloaded = 0;
+  // Track raw bytes consumed for telemetry only — not enforced mid-stream
+  // (see Content-Length comment above for why).
+  nodeStream.on("data", (chunk: Buffer) => {
+    downloaded += chunk.length;
+  });
   const added: ObservationRow[] = [];
   try {
     for await (const line of rl) {
@@ -365,7 +408,7 @@ export async function ingestGhArchive(
       if (!trimmed) continue;
       let ev: GhEvent;
       try {
-        ev = JSON.parse(trimmed);
+        ev = JSON.parse(trimmed) as GhEvent;
       } catch {
         continue; // skip malformed lines, keep going
       }
@@ -381,20 +424,17 @@ export async function ingestGhArchive(
     clearTimeout(timer);
     rl.close();
     // Detach the in-flight stream chain so the underlying socket closes
-    // promptly when we early-exit (cap, observation budget, error).
+    // promptly when we early-exit (event/observation cap or error).
     try {
       nodeStream.unpipe();
       gunzip.destroy();
-      counter.destroy();
       nodeStream.destroy();
     } catch {
       // best-effort cleanup
     }
   }
 
-  // Advance cursor — we successfully processed (or successfully early-exited)
-  // this hour. Even if the byte cap tripped, we read what was available;
-  // re-fetching the same hour next cycle would just trip the cap again.
+  // Advance cursor — successful (or successfully early-exited) read.
   await updateSourceCursor(source.id, { lastFetchedHour: targetHour });
 
   logger.info(
@@ -405,10 +445,8 @@ export async function ingestGhArchive(
       matched,
       observations: added.length,
       downloadedBytes: downloaded,
-      bytesCapHit,
     },
-    `GH Archive: hour=${targetHour} parsed=${parsed} matched=${matched} obs=${added.length}` +
-      (bytesCapHit ? " [byte-cap-hit]" : ""),
+    `GH Archive: hour=${targetHour} parsed=${parsed} matched=${matched} obs=${added.length}`,
   );
 
   return { added };
