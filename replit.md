@@ -45,6 +45,7 @@ The AI speaks in a single first-person voice across every step. All system promp
 - **Autonomy**: Ephemeroi can autonomously discover and add new GitHub sources based on reflected observations and an LLM judge, guided by existing beliefs and open questions.
 - **Constellation Alerts**: Per-source 4D state vector (Capability/Integrity/Usability/Trust) that updates with reflections. High-importance observations trigger "Don" narrated alerts via `EPHEMEROI_DON_URL` (local Ollama or OpenAI fallback).
 - **Bridge Endpoint**: `GET /api/ephemeroi/beliefs/by-source` allows Metacog to query Ephemeroi's beliefs about specific watched sources.
+- **Self-Improvement** (`POST /api/ephemeroi/self-improve`, `selfImprove.ts`): Reads a whitelist of its own `routes/ephemeroi/*.ts` files, asks `gpt-4o-mini` for ONE focused substantive patch (`{file, oldString, newString, rationale}`), validates uniqueness of the match, writes the patch, then spawns `node ./build.mjs` (esbuild — same path the dev workflow takes) to verify it compiles. On build failure the original is restored from in-memory; on success Telegram is pinged via `sendTelegramText` with the rationale + a small `±` diff preview. The new code only takes effect on the next api-server restart, which the Telegram message states explicitly. Module-scoped `inFlight` guard returns 409 on concurrent triggers. Triggered manually from the "Self-Improve" button on the Settings page.
 
 ## UI/UX
 - **Metacog**: iMessage-style layout with avatar, live status, and per-step accent colors.

@@ -23,6 +23,7 @@ import type {
   EphemeroiCycleResult,
   EphemeroiObservationsResponse,
   EphemeroiReportsResponse,
+  EphemeroiSelfImprovementResult,
   EphemeroiSettings,
   EphemeroiSettingsUpdate,
   EphemeroiSource,
@@ -1432,4 +1433,94 @@ export const useRunEphemeroiCycle = <
   TContext
 > => {
   return useMutation(getRunEphemeroiCycleMutationOptions(options));
+};
+
+/**
+ * Reads the bot's whitelisted route files, asks the LLM for one focused
+substantive patch (bug fix, missed edge case, clarity win), applies it,
+re-runs the bundler to verify it compiles, then pings Telegram with the
+rationale. If the patched code fails to build, the original is restored.
+The new code only takes effect on the next api-server process restart.
+
+ * @summary Have Ephemeroi propose and apply one self-improvement to its own source
+ */
+export const getRunEphemeroiSelfImprovementUrl = () => {
+  return `/api/ephemeroi/self-improve`;
+};
+
+export const runEphemeroiSelfImprovement = async (
+  options?: RequestInit,
+): Promise<EphemeroiSelfImprovementResult> => {
+  return customFetch<EphemeroiSelfImprovementResult>(
+    getRunEphemeroiSelfImprovementUrl(),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getRunEphemeroiSelfImprovementMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runEphemeroiSelfImprovement>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof runEphemeroiSelfImprovement>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["runEphemeroiSelfImprovement"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof runEphemeroiSelfImprovement>>,
+    void
+  > = () => {
+    return runEphemeroiSelfImprovement(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type RunEphemeroiSelfImprovementMutationResult = NonNullable<
+  Awaited<ReturnType<typeof runEphemeroiSelfImprovement>>
+>;
+
+export type RunEphemeroiSelfImprovementMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Have Ephemeroi propose and apply one self-improvement to its own source
+ */
+export const useRunEphemeroiSelfImprovement = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof runEphemeroiSelfImprovement>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof runEphemeroiSelfImprovement>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(getRunEphemeroiSelfImprovementMutationOptions(options));
 };

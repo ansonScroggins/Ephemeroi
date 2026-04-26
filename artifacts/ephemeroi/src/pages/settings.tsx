@@ -3,10 +3,11 @@ import {
   useGetEphemeroiSettings, 
   useUpdateEphemeroiSettings,
   useRunEphemeroiCycle,
+  useRunEphemeroiSelfImprovement,
   getGetEphemeroiSettingsQueryKey
 } from "@workspace/api-client-react";
 import { motion } from "framer-motion";
-import { Save, Play, Settings2, Bell, Brain, Clock, Zap, Sparkles } from "lucide-react";
+import { Save, Play, Settings2, Bell, Brain, Clock, Zap, Sparkles, Wrench } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
@@ -22,6 +23,7 @@ export default function Settings() {
   const { data: settings, isLoading } = useGetEphemeroiSettings();
   const updateSettings = useUpdateEphemeroiSettings();
   const runCycle = useRunEphemeroiCycle();
+  const selfImprove = useRunEphemeroiSelfImprovement();
 
   // Local state for optimistic UI before save
   const [local, setLocal] = useState({
@@ -74,6 +76,26 @@ export default function Settings() {
     }
   };
 
+  const handleSelfImprove = async () => {
+    try {
+      const res = await selfImprove.mutateAsync();
+      if (res.applied) {
+        toast({
+          title: "Self-improvement applied",
+          description: `${res.file ?? ""}: ${res.rationale ?? ""} — restart api-server to load.`,
+        });
+      } else {
+        toast({
+          title: "Self-improvement skipped",
+          description: res.error ?? "No actionable change proposed.",
+          variant: "destructive",
+        });
+      }
+    } catch (err) {
+      toast({ title: "Self-improvement failed", variant: "destructive" });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="max-w-2xl mx-auto space-y-6">
@@ -90,15 +112,27 @@ export default function Settings() {
           <h2 className="font-serif text-3xl text-foreground mb-2">Configuration</h2>
           <p className="text-muted-foreground">Tune the observer's cognitive parameters.</p>
         </div>
-        <Button 
-          variant="outline" 
-          className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 hover:text-primary"
-          onClick={handleRunCycle}
-          disabled={runCycle.isPending}
-        >
-          <Play className={`w-4 h-4 mr-2 ${runCycle.isPending ? 'animate-pulse' : ''}`} />
-          Force Cycle Now
-        </Button>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="bg-card/40 text-foreground border-border/60 hover:bg-card/70"
+            onClick={handleSelfImprove}
+            disabled={selfImprove.isPending}
+            title="Have Ephemeroi read its own source, propose one improvement, verify it builds, and ping Telegram."
+          >
+            <Wrench className={`w-4 h-4 mr-2 ${selfImprove.isPending ? 'animate-pulse' : ''}`} />
+            {selfImprove.isPending ? "Improving…" : "Self-Improve"}
+          </Button>
+          <Button
+            variant="outline"
+            className="bg-primary/10 text-primary border-primary/20 hover:bg-primary/20 hover:text-primary"
+            onClick={handleRunCycle}
+            disabled={runCycle.isPending}
+          >
+            <Play className={`w-4 h-4 mr-2 ${runCycle.isPending ? 'animate-pulse' : ''}`} />
+            Force Cycle Now
+          </Button>
+        </div>
       </header>
 
       <div className="grid gap-6">

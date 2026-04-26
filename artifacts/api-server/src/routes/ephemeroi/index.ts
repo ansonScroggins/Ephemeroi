@@ -14,7 +14,9 @@ import {
   ListEphemeroiReportsQueryParams,
   ListEphemeroiReportsResponse,
   RunEphemeroiCycleResponse,
+  RunEphemeroiSelfImprovementResponse,
 } from "@workspace/api-zod";
+import { runSelfImprovement, SelfImproveInFlightError } from "./selfImprove";
 import {
   getSettings,
   updateSettings,
@@ -370,6 +372,26 @@ router.post("/ephemeroi/cycle/run", async (_req, res) => {
     }
     logger.error({ err }, "POST /ephemeroi/cycle/run failed");
     res.status(500).json({ error: "Cycle failed" });
+  }
+});
+
+// ===== Self-improvement =====
+// Lets Ephemeroi read, edit, and re-bundle its own routes/* source files
+// (whitelisted in selfImprove.ts), then ping Telegram with the rationale.
+// The change won't take effect until the api-server process is restarted —
+// the Telegram message says so explicitly. If the patched code fails to
+// build, the original is restored automatically and the failure is reported.
+router.post("/ephemeroi/self-improve", async (_req, res) => {
+  try {
+    const result = await runSelfImprovement();
+    res.json(RunEphemeroiSelfImprovementResponse.parse(result));
+  } catch (err) {
+    if (err instanceof SelfImproveInFlightError) {
+      res.status(409).json({ error: "A self-improvement is already in flight" });
+      return;
+    }
+    logger.error({ err }, "POST /ephemeroi/self-improve failed");
+    res.status(500).json({ error: "Self-improvement failed" });
   }
 });
 

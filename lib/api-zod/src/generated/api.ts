@@ -771,3 +771,46 @@ export const RunEphemeroiCycleResponse = zod.object({
   ranAt: zod.coerce.date(),
   durationMs: zod.number(),
 });
+
+/**
+ * Reads the bot's whitelisted route files, asks the LLM for one focused
+substantive patch (bug fix, missed edge case, clarity win), applies it,
+re-runs the bundler to verify it compiles, then pings Telegram with the
+rationale. If the patched code fails to build, the original is restored.
+The new code only takes effect on the next api-server process restart.
+
+ * @summary Have Ephemeroi propose and apply one self-improvement to its own source
+ */
+export const RunEphemeroiSelfImprovementResponse = zod
+  .object({
+    applied: zod
+      .boolean()
+      .describe("True iff the patch was written and the rebuild succeeded."),
+    file: zod
+      .string()
+      .nullable()
+      .describe(
+        "The whitelisted source file the LLM proposed editing (null if proposal stage failed).",
+      ),
+    rationale: zod
+      .string()
+      .nullable()
+      .describe("One-sentence justification from the LLM."),
+    diffPreview: zod
+      .string()
+      .nullable()
+      .describe(
+        "A short ±-prefixed preview of the actual textual change (success only).",
+      ),
+    buildOk: zod
+      .boolean()
+      .nullable()
+      .describe(
+        "True if the patched code compiled. False if it failed and was reverted. Null if we never reached the build step.",
+      ),
+    error: zod
+      .string()
+      .nullable()
+      .describe("Human-readable failure reason. Null on success."),
+  })
+  .describe("Outcome of one self-improvement attempt.");

@@ -563,6 +563,24 @@ export interface EphemeroiCycleResult {
   durationMs: number;
 }
 
+/**
+ * Outcome of one self-improvement attempt.
+ */
+export interface EphemeroiSelfImprovementResult {
+  /** True iff the patch was written and the rebuild succeeded. */
+  applied: boolean;
+  /** The whitelisted source file the LLM proposed editing (null if proposal stage failed). */
+  file: string | null;
+  /** One-sentence justification from the LLM. */
+  rationale: string | null;
+  /** A short ±-prefixed preview of the actual textual change (success only). */
+  diffPreview: string | null;
+  /** True if the patched code compiled. False if it failed and was reverted. Null if we never reached the build step. */
+  buildOk: boolean | null;
+  /** Human-readable failure reason. Null on success. */
+  error: string | null;
+}
+
 export type EphemeroiStateLoop = {
   running: boolean;
   lastCycleAt?: string | null;

@@ -320,6 +320,30 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/self-improve:
+    post:
+      operationId: runEphemeroiSelfImprovement
+      tags: [ephemeroi]
+      summary: Have Ephemeroi propose and apply one self-improvement to its own source
+      description: |
+        Reads the bot's whitelisted route files, asks the LLM for one focused
+        substantive patch (bug fix, missed edge case, clarity win), applies it,
+        re-runs the bundler to verify it compiles, then pings Telegram with the
+        rationale. If the patched code fails to build, the original is restored.
+        The new code only takes effect on the next api-server process restart.
+      responses:
+        "200":
+          description: Self-improvement attempt result (success or graceful failure)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSelfImprovementResult"
+        "409":
+          description: A self-improvement is already in flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 components:
   schemas:
     HealthStatus:
@@ -1046,6 +1070,35 @@ components:
         durationMs:
           type: integer
       required: [observationsAdded, beliefsUpdated, contradictionsFound, reportsCreated, autoSourcesAdded, ranAt, durationMs]
+
+    EphemeroiSelfImprovementResult:
+      type: object
+      description: Outcome of one self-improvement attempt.
+      properties:
+        applied:
+          type: boolean
+          description: True iff the patch was written and the rebuild succeeded.
+        file:
+          type: string
+          nullable: true
+          description: The whitelisted source file the LLM proposed editing (null if proposal stage failed).
+        rationale:
+          type: string
+          nullable: true
+          description: One-sentence justification from the LLM.
+        diffPreview:
+          type: string
+          nullable: true
+          description: A short ±-prefixed preview of the actual textual change (success only).
+        buildOk:
+          type: boolean
+          nullable: true
+          description: True if the patched code compiled. False if it failed and was reverted. Null if we never reached the build step.
+        error:
+          type: string
+          nullable: true
+          description: Human-readable failure reason. Null on success.
+      required: [applied, file, rationale, diffPreview, buildOk, error]
 
     EphemeroiState:
       type: object

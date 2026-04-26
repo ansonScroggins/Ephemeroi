@@ -99,7 +99,7 @@ class EphemeroiLoop {
    * failure as a non-200 instead of returning misleading zero counts.
    */
   async runOnce(): Promise<CycleResult> {
-    if (this.inFlight) throw new InFlightError();
+    if (this.inFlight) throw new InFlightError('Cycle already in flight');
     return this.cycle({ throwOnError: true });
   }
 
@@ -126,7 +126,7 @@ class EphemeroiLoop {
         await this.cycle();
       }
     } catch (err) {
-      this.lastError = err instanceof Error ? err.message : String(err);
+      this.lastError = err instanceof Error ? err.message : 'Unknown error occurred';
       logger.warn({ err }, "Ephemeroi loop tick failed");
     } finally {
       void this.scheduleNext();

@@ -20,6 +20,7 @@ export * from "./ephemeroiObservation";
 export * from "./ephemeroiObservationsResponse";
 export * from "./ephemeroiReport";
 export * from "./ephemeroiReportsResponse";
+export * from "./ephemeroiSelfImprovementResult";
 export * from "./ephemeroiSettings";
 export * from "./ephemeroiSettingsAutonomy";
 export * from "./ephemeroiSettingsNovelty";
