@@ -23,6 +23,7 @@ const IMPROVABLE_FILES = [
   "src/routes/ephemeroi/ingest-github.ts",
   "src/routes/ephemeroi/guard.ts",
   "src/routes/ephemeroi/telegram.ts",
+  "src/routes/ephemeroi/telegramAnswer.ts",
 ] as const;
 
 const ImprovementSchema = z.object({

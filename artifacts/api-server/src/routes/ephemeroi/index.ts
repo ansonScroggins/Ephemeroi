@@ -42,6 +42,7 @@ import {
   settingsToWire,
 } from "./wire";
 import { ephemeroiLoop, InFlightError } from "./loop";
+import { startTelegramAnswerLoop } from "./telegramAnswer";
 import { bus, type EphemeroiEvent } from "./bus";
 import { assertPublicHttpUrl } from "./guard";
 import { logger } from "../../lib/logger";
@@ -50,6 +51,8 @@ const router: IRouter = Router();
 
 // Kick off the always-on loop the first time this module is loaded.
 ephemeroiLoop.start();
+// Start listening for inbound Telegram questions (no-op if Telegram unconfigured).
+startTelegramAnswerLoop();
 
 // ===== State (one-shot dashboard) =====
 
