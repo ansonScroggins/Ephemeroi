@@ -77,7 +77,12 @@ const wikipediaSchema = z.object({
 const wikipediaEntry: CatalogEntry = {
   id: "wikipedia-summary",
   description: "Plain-language summary of a topic from English Wikipedia.",
-  intentKeywords: ["what", "who", "history", "definition", "biography", "wiki"],
+  // Deliberately NOT including bare "what"/"who" — they appear in almost
+  // every question ("what's the weather in tokyo", "what's the price of
+  // ETH") and would steal queries from domain-specific adapters. Wikipedia
+  // still wins as the fallback because of baseScore when no domain
+  // keywords hit.
+  intentKeywords: ["history", "definition", "biography", "wiki", "encyclopedia"],
   baseScore: 0.25,
   schema: wikipediaSchema,
   call: async ({ topic }) => {
