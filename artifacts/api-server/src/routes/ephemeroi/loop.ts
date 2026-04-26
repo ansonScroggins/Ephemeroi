@@ -97,7 +97,7 @@ class EphemeroiLoop {
    * failure as a non-200 instead of returning misleading zero counts.
    */
   async runOnce(): Promise<CycleResult> {
-    if (this.inFlight) throw new InFlightError('Cycle already in flight');
+    if (this.inFlight) throw new InFlightError();
     return this.cycle({ throwOnError: true });
   }
 

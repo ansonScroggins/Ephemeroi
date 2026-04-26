@@ -62,6 +62,87 @@ const WINDOW_MS = Number(
   process.env["EPHEMEROI_CONVERGENCE_WINDOW_MS"] ?? 5 * 60 * 1000,
 );
 
+// ----------------------------------------------------------------------------
+// Burst tracking + 🚨 escalation prefix
+// ----------------------------------------------------------------------------
+// EWMA of arrivals per *subject* (origin-agnostic — cross-limb signals on the
+// same topic compound), with exponential decay so a subject that goes quiet
+// returns to baseline. Normalized to 0..1 by dividing by `BURST_NORMALIZATION`
+// (sustained-arrival count that maps to burst=1.0) and clamped.
+//
+// A unified message is prefixed with 🚨 iff
+//   severity >= ESCALATION_SEVERITY_THRESHOLD  AND
+//   burst    >= ESCALATION_BURST_THRESHOLD
+// at the moment of delivery (cross-limb merge or single-limb expiry). This
+// is purely a render-layer change — convergence/merge semantics are unchanged.
+// ----------------------------------------------------------------------------
+
+const BURST_HALF_LIFE_MS = Number(
+  process.env["EPHEMEROI_BURST_HALF_LIFE_MS"] ?? 5 * 60 * 1000,
+);
+const BURST_NORMALIZATION = Number(
+  process.env["EPHEMEROI_BURST_NORMALIZATION"] ?? 5,
+);
+const ESCALATION_SEVERITY_THRESHOLD = Number(
+  process.env["EPHEMEROI_ESCALATION_SEVERITY_THRESHOLD"] ?? 0.8,
+);
+const ESCALATION_BURST_THRESHOLD = Number(
+  process.env["EPHEMEROI_ESCALATION_BURST_THRESHOLD"] ?? 0.8,
+);
+// Burst entries below this decayed EWMA are evicted on the next opportunistic
+// prune (corresponds to ~6.6 half-lives of silence with normalization=5).
+const BURST_PRUNE_EPSILON = 0.01;
+
+interface BurstState { ewma: number; lastTickMs: number; }
+const burstState: Map<string, BurstState> = new Map();
+
+function decayFactor(dtMs: number): number {
+  if (dtMs <= 0) return 1;
+  return Math.pow(0.5, dtMs / BURST_HALF_LIFE_MS);
+}
+
+function pruneBurst(now: number): void {
+  for (const [k, s] of burstState) {
+    const decayed = s.ewma * decayFactor(now - s.lastTickMs);
+    if (decayed < BURST_PRUNE_EPSILON) burstState.delete(k);
+  }
+}
+
+function tickBurst(key: string, now: number): number {
+  if (!key) return 0;
+  // Prune BEFORE the branch so the first-seen-key path also reclaims memory.
+  // Otherwise high-cardinality one-off subject traffic can grow burstState
+  // unbounded (each first-seen key returns early without pruning).
+  pruneBurst(now);
+  const s = burstState.get(key);
+  if (!s) {
+    burstState.set(key, { ewma: 1, lastTickMs: now });
+    return Math.min(1, 1 / BURST_NORMALIZATION);
+  }
+  s.ewma = s.ewma * decayFactor(now - s.lastTickMs) + 1;
+  s.lastTickMs = now;
+  return Math.min(1, s.ewma / BURST_NORMALIZATION);
+}
+
+function readBurst(key: string, now: number): number {
+  if (!key) return 0;
+  const s = burstState.get(key);
+  if (!s) return 0;
+  const decayed = s.ewma * decayFactor(now - s.lastTickMs);
+  return Math.min(1, decayed / BURST_NORMALIZATION);
+}
+
+function shouldEscalate(severity: number, burst: number): boolean {
+  return (
+    severity >= ESCALATION_SEVERITY_THRESHOLD &&
+    burst >= ESCALATION_BURST_THRESHOLD
+  );
+}
+
+function escalationPrefix(severity: number, burst: number): string {
+  return shouldEscalate(severity, burst) ? "🚨 " : "";
+}
+
 // Tokens that are too generic to anchor a cross-limb correlation. Add to this
 // list when false correlations show up in practice.
 const STOP_TOKENS = new Set([
@@ -96,15 +177,22 @@ function tokenize(s: string | undefined): Set<string> {
   return out;
 }
 
+function subjectKey(env: SignalEnvelope, tokens: Set<string>): string {
+  // Origin-agnostic key — used both for burst tracking (which compounds
+  // across limbs on the same topic) and as the base for the per-origin
+  // dedupe key below.
+  return (
+    env.subject?.trim().toLowerCase() ||
+    Array.from(tokens).sort().join(" ") ||
+    env.headline.toLowerCase()
+  );
+}
+
 function dedupeKey(env: SignalEnvelope, tokens: Set<string>): string {
   // Per-origin key so a re-fire from the SAME limb collapses (severity-wins,
   // timer NOT reset). Cross-limb matches are detected separately via token
   // overlap before we ever consult this key.
-  const base =
-    env.subject?.trim().toLowerCase() ||
-    Array.from(tokens).sort().join(" ") ||
-    env.headline.toLowerCase();
-  return `${env.origin}::${base}`;
+  return `${env.origin}::${subjectKey(env, tokens)}`;
 }
 
 function tokensOverlap(a: Set<string>, b: Set<string>): boolean {
@@ -123,9 +211,10 @@ function evidenceFormatted(env: SignalEnvelope): string | null {
   return typeof v === "string" && v.length > 0 ? v : null;
 }
 
-function renderSingle(env: SignalEnvelope): string {
+function renderSingle(env: SignalEnvelope, burst: number): string {
   const sevPct = Math.round(env.severity * 100);
-  const lines: string[] = [`${originBadge(env)}  severity ${sevPct}/100`];
+  const prefix = escalationPrefix(env.severity, burst);
+  const lines: string[] = [`${prefix}${originBadge(env)}  severity ${sevPct}/100`];
   const formatted = evidenceFormatted(env);
   if (formatted) {
     lines.push("");
@@ -150,15 +239,16 @@ function renderLimbBlock(env: SignalEnvelope): string {
   return env.headline;
 }
 
-function renderMerged(a: SignalEnvelope, b: SignalEnvelope): string {
+function renderMerged(a: SignalEnvelope, b: SignalEnvelope, burst: number): string {
   // Canonical order: Ephemeroi first, Metacog second, regardless of arrival.
   const [ep, mc] = a.origin === "ephemeroi" ? [a, b] : [b, a];
   const sev = Math.max(a.severity, b.severity);
   const sevPct = Math.round(sev * 100);
+  const prefix = escalationPrefix(sev, burst);
   const subject =
     ep.subject ?? mc.subject ?? a.subject ?? b.subject ?? "(no subject)";
   return [
-    `[Cross-limb · ephemeroi+metacog]  severity ${sevPct}/100`,
+    `${prefix}[Cross-limb · ephemeroi+metacog]  severity ${sevPct}/100`,
     `Subject: ${subject}`,
     "",
     `── Ephemeroi · ${ep.role} ──`,
@@ -224,6 +314,12 @@ function handleSignal(
   onDelivered: SignalDeliveryCallback | undefined,
 ): void {
   const tokens = tokenize(env.subject);
+  const sKey = subjectKey(env, tokens);
+  const now = Date.now();
+  // Tick burst on EVERY arrival (origin-agnostic) so cross-limb chatter on
+  // the same topic compounds. The merge / single-limb paths below read the
+  // current burst at delivery time.
+  const burst = tickBurst(sKey, now);
 
   // 1. Counterpart still pending → cancel its timer, emit ONE merge,
   //    fire BOTH envelopes' delivery callbacks with the shared outcome.
@@ -236,7 +332,7 @@ function handleSignal(
     pending.delete(pkey);
     const counterpartCb = entry.onDelivered;
     try {
-      const merged = renderMerged(env, entry.envelope);
+      const merged = renderMerged(env, entry.envelope, burst);
       void deliver(merged, "cross-limb merge", [onDelivered, counterpartCb]);
     } catch (err) {
       logger.error(
@@ -264,18 +360,20 @@ function handleSignal(
   // 3. New entry: buffer for the full window. If a counterpart from the
   //    OTHER limb arrives during this time we'll branch into case (1) and
   //    cancel this timer; otherwise we emit a single-limb message and fire
-  //    the delivery callback with the Telegram outcome.
+  //    the delivery callback with the Telegram outcome. Burst is read
+  //    fresh at fire time (it decays during the wait).
   const timer = setTimeout(() => {
     const cur = pending.get(key);
     if (!cur) return;
     pending.delete(key);
-    const text = renderSingle(cur.envelope);
+    const burstNow = readBurst(sKey, Date.now());
+    const text = renderSingle(cur.envelope, burstNow);
     void deliver(text, `single-limb ${cur.envelope.origin}`, [cur.onDelivered]);
   }, WINDOW_MS);
   pending.set(key, {
     envelope: env,
     tokens,
-    arrivedAt: Date.now(),
+    arrivedAt: now,
     timer,
     onDelivered,
   });
@@ -298,7 +396,13 @@ export function startConvergence(): void {
     },
   );
   logger.info(
-    { windowMs: WINDOW_MS },
+    {
+      windowMs: WINDOW_MS,
+      burstHalfLifeMs: BURST_HALF_LIFE_MS,
+      burstNormalization: BURST_NORMALIZATION,
+      escalationSeverityThreshold: ESCALATION_SEVERITY_THRESHOLD,
+      escalationBurstThreshold: ESCALATION_BURST_THRESHOLD,
+    },
     "Unified convergence subscriber started",
   );
 }
@@ -308,7 +412,10 @@ export const __testing = {
   reset(): void {
     for (const entry of pending.values()) clearTimeout(entry.timer);
     pending.clear();
+    burstState.clear();
   },
   pendingSize: () => pending.size,
   windowMs: () => WINDOW_MS,
+  burstSize: () => burstState.size,
+  readBurst: (key: string) => readBurst(key, Date.now()),
 };
