@@ -1,44 +1,66 @@
 import {
   signalBus,
   type SignalEnvelope,
+  type SignalDeliveryCallback,
 } from "../../lib/signal-envelope";
 import { logger } from "../../lib/logger";
 import { sendTelegramText, isTelegramConfigured } from "./telegram";
 
 // ============================================================================
-// Unified Telegram convergence subscriber
+// Unified Telegram convergence subscriber — strict single-message semantics
 // ----------------------------------------------------------------------------
-// Single subscriber on `signalBus` that fans every cross-site envelope out
-// to Telegram with an `[Origin · role]` badge.
+// Single subscriber on `signalBus` that owns all unified-stream Telegram
+// delivery for both Ephemeroi (structural / constellation) and Metacog
+// (truth-anchor / exploration).
 //
-// Convergence rule
-// ----------------
-// - Every envelope is buffered for `MERGE_DELAY_MS` (default 3s) under a
-//   per-(origin, normalized-subject) key. While buffered, an arriving envelope
-//   from the OTHER limb whose subject overlaps cancels the pending send and
-//   emits a single MERGED `[Cross-limb · ephemeroi+metacog]` message instead.
-// - After delivery, the envelope is also stashed in a `RECENT_WINDOW_MS`
-//   (default 5min) recent-sends window. A later envelope from the OTHER limb
-//   on an overlapping subject goes out as a `[Cross-limb correlation · …]`
-//   follow-up rather than a stand-alone single-limb message — so the user
-//   sees that the two sites converged on the same subject.
+// Convergence rule (matches Task #14 spec literally)
+// --------------------------------------------------
+// Every envelope is buffered under a per-(origin, normalized-subject) key for
+// up to `EPHEMEROI_CONVERGENCE_WINDOW_MS` (default 5 min). Outcomes:
 //
-// Subject overlap is intentionally simple (≥1 significant token of length≥4
-// shared between normalized subjects). This is conservative enough to avoid
-// false correlations in v1; the rule lives in one place and is easy to tune.
+//   - Counterpart from the OTHER limb arrives during the window with an
+//     overlapping subject  →  cancel its pending timer, emit a SINGLE
+//     `[Cross-limb · ephemeroi+metacog]` message, fire the delivery callbacks
+//     of BOTH envelopes with the (shared) Telegram outcome.
 //
-// Telegram failures are logged but never propagate — the formatted message is
-// always written to the structured log first, so the audit trail survives a
-// missing/unreachable Telegram bot.
+//   - Window expires with no counterpart  →  emit a SINGLE-LIMB
+//     `[Origin · role]` message; fire that envelope's delivery callback.
+//
+// So any same-subject pair from different limbs that arrives within the
+// window produces exactly ONE Telegram message — the explicit Task #14
+// requirement.
+//
+// Trade-off
+// ---------
+// The first signal of a pair is held for up to WINDOW_MS waiting for its
+// counterpart. For deployments that need lower-latency single-limb alerts
+// (e.g. Ephemeroi structural cage detection), set
+// `EPHEMEROI_CONVERGENCE_WINDOW_MS=30000` (30 s) or similar. The default is
+// the spec value (5 min) so the literal acceptance criterion is met out of
+// the box; operators tune it down if their alert latency requirements
+// outweigh strict pair-merging.
+//
+// Subject overlap is intentionally simple: ≥1 significant token of length ≥4
+// shared between normalized subjects, after a small stopword filter. v1
+// conservatism — see follow-up Task #17 for the planned tightening.
+//
+// Same-origin burst dedupe
+// ------------------------
+// If the same limb re-fires on the same subject while one is still pending,
+// we keep the highest-severity envelope (its content wins) and union the
+// tokens, but DO NOT reset the timer (a chatty source can't starve the
+// queue) and we chain any new delivery callback onto the existing one so
+// every caller gets notified.
+//
+// Telegram failures are logged but never propagate. The fully-rendered text
+// is always written to the structured log first, so the audit trail survives
+// a missing/unreachable Telegram bot. Convergence is fire-and-forget from
+// the producer's side (`signalBus.emit` is sync; delivery work is detached).
 // ============================================================================
 
-const MERGE_DELAY_MS = Number(
-  process.env["EPHEMEROI_CONVERGENCE_MERGE_MS"] ?? 3_000,
-);
-const RECENT_WINDOW_MS = Number(
+const WINDOW_MS = Number(
   process.env["EPHEMEROI_CONVERGENCE_WINDOW_MS"] ?? 5 * 60 * 1000,
 );
-const MAX_RECENT_ENTRIES = 256;
 
 // Tokens that are too generic to anchor a cross-limb correlation. Add to this
 // list when false correlations show up in practice.
@@ -54,16 +76,12 @@ interface PendingEntry {
   tokens: Set<string>;
   arrivedAt: number;
   timer: NodeJS.Timeout;
-}
-
-interface RecentEntry {
-  envelope: SignalEnvelope;
-  tokens: Set<string>;
-  sentAt: number;
+  // Chained delivery callback — set by `bindCallback` so successive
+  // same-key publishes all get notified of the eventual Telegram outcome.
+  onDelivered?: SignalDeliveryCallback;
 }
 
 const pending: Map<string, PendingEntry> = new Map();
-const recent: RecentEntry[] = [];
 
 function tokenize(s: string | undefined): Set<string> {
   if (!s) return new Set();
@@ -79,8 +97,9 @@ function tokenize(s: string | undefined): Set<string> {
 }
 
 function dedupeKey(env: SignalEnvelope, tokens: Set<string>): string {
-  // Per-origin key so a re-fire from the SAME limb collapses (timer is
-  // reset). Cross-limb matches are detected separately via token overlap.
+  // Per-origin key so a re-fire from the SAME limb collapses (severity-wins,
+  // timer NOT reset). Cross-limb matches are detected separately via token
+  // overlap before we ever consult this key.
   const base =
     env.subject?.trim().toLowerCase() ||
     Array.from(tokens).sort().join(" ") ||
@@ -131,22 +150,15 @@ function renderLimbBlock(env: SignalEnvelope): string {
   return env.headline;
 }
 
-function renderMerged(
-  a: SignalEnvelope,
-  b: SignalEnvelope,
-  kind: "merge" | "follow",
-): string {
+function renderMerged(a: SignalEnvelope, b: SignalEnvelope): string {
   // Canonical order: Ephemeroi first, Metacog second, regardless of arrival.
   const [ep, mc] = a.origin === "ephemeroi" ? [a, b] : [b, a];
   const sev = Math.max(a.severity, b.severity);
   const sevPct = Math.round(sev * 100);
-  const subject = ep.subject ?? mc.subject ?? a.subject ?? b.subject ?? "(no subject)";
-  const banner =
-    kind === "merge"
-      ? "[Cross-limb · ephemeroi+metacog]"
-      : "[Cross-limb correlation · ephemeroi+metacog]";
+  const subject =
+    ep.subject ?? mc.subject ?? a.subject ?? b.subject ?? "(no subject)";
   return [
-    `${banner}  severity ${sevPct}/100`,
+    `[Cross-limb · ephemeroi+metacog]  severity ${sevPct}/100`,
     `Subject: ${subject}`,
     "",
     `── Ephemeroi · ${ep.role} ──`,
@@ -157,99 +169,136 @@ function renderMerged(
   ].join("\n");
 }
 
-function pruneRecent(): void {
-  const cutoff = Date.now() - RECENT_WINDOW_MS;
-  while (recent.length > 0 && recent[0]!.sentAt < cutoff) recent.shift();
-  while (recent.length > MAX_RECENT_ENTRIES) recent.shift();
+function chainCallback(
+  prev: SignalDeliveryCallback | undefined,
+  next: SignalDeliveryCallback | undefined,
+): SignalDeliveryCallback | undefined {
+  if (!prev) return next;
+  if (!next) return prev;
+  return (success: boolean): void => {
+    try { prev(success); } catch (err) {
+      logger.warn({ err }, "convergence: onDelivered callback threw");
+    }
+    try { next(success); } catch (err) {
+      logger.warn({ err }, "convergence: onDelivered callback threw");
+    }
+  };
 }
 
-function recordRecent(env: SignalEnvelope, tokens: Set<string>): void {
-  recent.push({ envelope: env, tokens, sentAt: Date.now() });
-  pruneRecent();
-}
-
-async function deliver(text: string, kind: string): Promise<void> {
+async function deliver(
+  text: string,
+  kind: string,
+  callbacks: Array<SignalDeliveryCallback | undefined>,
+): Promise<void> {
   // Always log the rendered message — that's the audit trail when Telegram
   // isn't configured.
   logger.info(
     { kind, lines: text.split("\n").length },
     `unified telegram ${kind}\n${text}`,
   );
-  if (!isTelegramConfigured()) return;
-  try {
-    await sendTelegramText(text);
-  } catch (err) {
-    logger.warn({ err, kind }, "convergence: telegram delivery failed");
+  let success = false;
+  if (isTelegramConfigured()) {
+    try {
+      // sendTelegramText resolves with FALSE on Telegram API rejection
+      // (e.g. invalid bot token, banned chat) without throwing — so we
+      // must inspect the return value, not just the absence of an error.
+      success = await sendTelegramText(text);
+      if (!success) {
+        logger.warn({ kind }, "convergence: telegram send returned false");
+      }
+    } catch (err) {
+      logger.warn({ err, kind }, "convergence: telegram delivery threw");
+      success = false;
+    }
+  }
+  for (const cb of callbacks) {
+    if (!cb) continue;
+    try { cb(success); } catch (err) {
+      logger.warn({ err, kind }, "convergence: onDelivered callback threw");
+    }
   }
 }
 
-function handleSignal(env: SignalEnvelope): void {
+function handleSignal(
+  env: SignalEnvelope,
+  onDelivered: SignalDeliveryCallback | undefined,
+): void {
   const tokens = tokenize(env.subject);
 
-  // 1. Counterpart still in the merge buffer → cancel and emit ONE merge.
+  // 1. Counterpart still pending → cancel its timer, emit ONE merge,
+  //    fire BOTH envelopes' delivery callbacks with the shared outcome.
+  //    If anything between extracting the counterpart and scheduling
+  //    delivery throws, fail BOTH callbacks so neither caller is stranded.
   for (const [pkey, entry] of pending) {
     if (entry.envelope.origin === env.origin) continue;
     if (!tokensOverlap(tokens, entry.tokens)) continue;
     clearTimeout(entry.timer);
     pending.delete(pkey);
-    const merged = renderMerged(env, entry.envelope, "merge");
-    recordRecent(env, tokens);
-    recordRecent(entry.envelope, entry.tokens);
-    void deliver(merged, "cross-limb merge");
+    const counterpartCb = entry.onDelivered;
+    try {
+      const merged = renderMerged(env, entry.envelope);
+      void deliver(merged, "cross-limb merge", [onDelivered, counterpartCb]);
+    } catch (err) {
+      logger.error(
+        { err, envelope: env, counterpart: entry.envelope },
+        "convergence: merge-path crashed; failing both callbacks",
+      );
+      try { onDelivered?.(false); } catch { /* ignore */ }
+      try { counterpartCb?.(false); } catch { /* ignore */ }
+    }
     return;
   }
 
-  // 2. Counterpart already sent within RECENT_WINDOW_MS → correlation follow-up.
-  if (tokens.size > 0) {
-    pruneRecent();
-    for (const r of recent) {
-      if (r.envelope.origin === env.origin) continue;
-      if (!tokensOverlap(tokens, r.tokens)) continue;
-      const merged = renderMerged(env, r.envelope, "follow");
-      recordRecent(env, tokens);
-      void deliver(merged, "cross-limb correlation");
-      return;
-    }
-  }
-
-  // 3. Schedule a single-limb send after the merge window — gives a
-  //    near-simultaneous counterpart a chance to fold in.
+  // 2. Same-origin re-fire → keep highest severity, union tokens, chain
+  //    the new delivery callback onto the existing one. DO NOT reset the
+  //    timer — that would let a chatty source starve the queue.
   const key = dedupeKey(env, tokens);
   const existing = pending.get(key);
   if (existing) {
-    // Same-origin re-fire on the same subject while a send is pending. Don't
-    // reset the timer (that would let a chatty source starve the queue) and
-    // don't drop information: keep the higher-severity envelope. Tokens are
-    // re-unioned so a slightly different subject still merges with a later
-    // counterpart from the OTHER limb.
     if (env.severity > existing.envelope.severity) existing.envelope = env;
     for (const t of tokens) existing.tokens.add(t);
+    existing.onDelivered = chainCallback(existing.onDelivered, onDelivered);
     return;
   }
+
+  // 3. New entry: buffer for the full window. If a counterpart from the
+  //    OTHER limb arrives during this time we'll branch into case (1) and
+  //    cancel this timer; otherwise we emit a single-limb message and fire
+  //    the delivery callback with the Telegram outcome.
   const timer = setTimeout(() => {
     const cur = pending.get(key);
     if (!cur) return;
     pending.delete(key);
     const text = renderSingle(cur.envelope);
-    recordRecent(cur.envelope, cur.tokens);
-    void deliver(text, `single-limb ${cur.envelope.origin}`);
-  }, MERGE_DELAY_MS);
-  pending.set(key, { envelope: env, tokens, arrivedAt: Date.now(), timer });
+    void deliver(text, `single-limb ${cur.envelope.origin}`, [cur.onDelivered]);
+  }, WINDOW_MS);
+  pending.set(key, {
+    envelope: env,
+    tokens,
+    arrivedAt: Date.now(),
+    timer,
+    onDelivered,
+  });
 }
 
 let started = false;
 export function startConvergence(): void {
   if (started) return;
   started = true;
-  signalBus.on("signal", (env: SignalEnvelope) => {
-    try {
-      handleSignal(env);
-    } catch (err) {
-      logger.error({ err, envelope: env }, "convergence handler crashed");
-    }
-  });
+  signalBus.on(
+    "signal",
+    (env: SignalEnvelope, onDelivered?: SignalDeliveryCallback) => {
+      try {
+        handleSignal(env, onDelivered);
+      } catch (err) {
+        logger.error({ err, envelope: env }, "convergence handler crashed");
+        // Don't leave the producer hanging.
+        try { onDelivered?.(false); } catch { /* ignore */ }
+      }
+    },
+  );
   logger.info(
-    { mergeDelayMs: MERGE_DELAY_MS, recentWindowMs: RECENT_WINDOW_MS },
+    { windowMs: WINDOW_MS },
     "Unified convergence subscriber started",
   );
 }
@@ -259,8 +308,7 @@ export const __testing = {
   reset(): void {
     for (const entry of pending.values()) clearTimeout(entry.timer);
     pending.clear();
-    recent.length = 0;
   },
   pendingSize: () => pending.size,
-  recentSize: () => recent.length,
+  windowMs: () => WINDOW_MS,
 };

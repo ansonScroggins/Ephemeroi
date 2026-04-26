@@ -18,19 +18,45 @@ export const SignalEnvelopeSchema = z.object({
 
 export type SignalEnvelope = z.infer<typeof SignalEnvelopeSchema>;
 
-// In-process bus. The convergence task (see
-// `.local/tasks/unified-telegram-convergence.md`) wires its Telegram fan-out
-// here as a subscriber; for now we just log so producers can be tested in
-// isolation.
+/**
+ * Called once when the unified Telegram convergence layer is done with a
+ * specific envelope — `success` is true iff Telegram acknowledged the
+ * (possibly merged) outbound message. Callers (e.g. Ephemeroi's loop) use
+ * this to update per-report delivery state accurately, instead of marking
+ * "delivered" the moment they hand off.
+ *
+ * Not part of the wire-level envelope on purpose: callbacks can't cross the
+ * inbound HTTP boundary, so they live in the in-process publish options.
+ */
+export type SignalDeliveryCallback = (success: boolean) => void;
+
+export interface PublishSignalOptions {
+  onDelivered?: SignalDeliveryCallback;
+}
+
+// In-process bus. The convergence subscriber wires its Telegram fan-out
+// here; producers stay decoupled and never block on Telegram.
 class SignalBus extends EventEmitter {}
 
 export const signalBus: SignalBus = new SignalBus();
 signalBus.setMaxListeners(20);
 
-export function publishSignal(envelope: SignalEnvelope): void {
+export function publishSignal(
+  envelope: SignalEnvelope,
+  options?: PublishSignalOptions,
+): void {
   const parsed = SignalEnvelopeSchema.safeParse(envelope);
   if (!parsed.success) {
     logger.warn({ err: parsed.error.issues, envelope }, "publishSignal: invalid envelope");
+    // Surface the failure to the caller's delivery callback so it doesn't
+    // sit in a "pending" UI state forever. Wrap in try/catch so a buggy
+    // callback can't propagate a synchronous throw back into the caller's
+    // request handler.
+    try {
+      options?.onDelivered?.(false);
+    } catch (err) {
+      logger.warn({ err }, "publishSignal: onDelivered callback threw");
+    }
     return;
   }
   logger.info(
@@ -43,5 +69,5 @@ export function publishSignal(envelope: SignalEnvelope): void {
     },
     "signal emitted",
   );
-  signalBus.emit("signal", parsed.data);
+  signalBus.emit("signal", parsed.data, options?.onDelivered);
 }

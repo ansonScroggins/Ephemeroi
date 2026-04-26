@@ -335,33 +335,44 @@ class EphemeroiLoop {
                 // `evidence.formatted` so the convergence subscriber can
                 // emit it verbatim under the `[Ephemeroi · structural]`
                 // badge (or fold it into a cross-limb merge).
+                //
+                // The `onDelivered` callback is invoked exactly once when
+                // the convergence layer knows the Telegram outcome —
+                // whether this envelope was sent stand-alone or merged
+                // with a Metacog counterpart. We only mark the report
+                // delivered on a CONFIRMED Telegram success, so the
+                // Reports view reflects actual delivery (not just hand-off).
                 if (settings.telegramEnabled) {
-                  publishSignal({
-                    origin: "ephemeroi",
-                    role: "structural",
-                    severity: blendedImportance,
-                    headline: report.headline,
-                    body: report.body,
-                    subject: `${sourceRow!.kind}:${sourceRow!.target}`,
-                    evidence: {
-                      formatted: alert.formatted,
-                      sourceLabel: sourceRow!.label,
-                      sourceTarget: sourceRow!.target,
-                      sourceKind: sourceRow!.kind,
-                      reportId: report.id,
-                      donSource: alert.donSource,
+                  const reportId = report.id;
+                  publishSignal(
+                    {
+                      origin: "ephemeroi",
+                      role: "structural",
+                      severity: blendedImportance,
+                      headline: report.headline,
+                      body: report.body,
+                      subject: `${sourceRow!.kind}:${sourceRow!.target}`,
+                      evidence: {
+                        formatted: alert.formatted,
+                        sourceLabel: sourceRow!.label,
+                        sourceTarget: sourceRow!.target,
+                        sourceKind: sourceRow!.kind,
+                        reportId: reportId,
+                        donSource: alert.donSource,
+                      },
                     },
-                  });
-                  // Convergence is fire-and-forget. We mark the report as
-                  // delivered when Telegram is *configured* (mirroring the
-                  // pre-convergence behaviour, where the ack came from the
-                  // direct sendConstellationAlert call). Actual Telegram
-                  // failures are logged inside the convergence subscriber.
-                  if (isTelegramConfigured()) {
-                    await markReportDelivered(report.id);
-                    report.delivered = true;
-                    report.deliveredAt = new Date();
-                  }
+                    {
+                      onDelivered: (success) => {
+                        if (!success) return;
+                        markReportDelivered(reportId).catch((err) => {
+                          logger.warn(
+                            { err, reportId },
+                            "convergence ack: markReportDelivered failed",
+                          );
+                        });
+                      },
+                    },
+                  );
                 }
               } catch (err) {
                 logger.warn(
