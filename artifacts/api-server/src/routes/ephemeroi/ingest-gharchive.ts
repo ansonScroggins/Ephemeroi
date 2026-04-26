@@ -46,10 +46,20 @@ import {
 // ---- caps ----
 // Hard ceiling on a single hour's compressed size. Real hours are
 // 30-100MB. Anything larger almost certainly means the URL is wrong /
-// gharchive is misbehaving — we skip it (and advance the cursor) rather
-// than risk OOM. Enforced via Content-Length pre-check, NOT mid-stream
-// truncation (truncating a gzip member produces a Z_BUF_ERROR which
-// would prevent the cursor from advancing and stall the source forever).
+// gharchive is misbehaving — we skip the hour (and advance the cursor)
+// rather than risk OOM or pin the cycle on a bad file forever.
+//
+// Enforcement is two-layered:
+//   1. Content-Length pre-check before we start the stream. Cheap, avoids
+//      pulling any bytes off the socket.
+//   2. Mid-stream byte counter that calls `controller.abort()` if the
+//      header was missing/wrong. The aborted fetch errors out the stream
+//      pipeline, we catch the AbortError, and we treat it as "oversize
+//      hour" — same outcome as path 1.
+//
+// Note: we deliberately do NOT push(null) into a mid-gzip member to stop
+// reading; that produces a Z_BUF_ERROR which would propagate as a real
+// failure and (per our cursor policy below) stall the source.
 const MAX_DOWNLOADED_BYTES = 120 * 1024 * 1024;
 // Upper bound on `JSON.parse` calls per cycle so a malformed / pathological
 // dump can't burn the loop. Real hours are ~150-300K events. This is also
@@ -394,10 +404,21 @@ export async function ingestGhArchive(
   let parsed = 0;
   let matched = 0;
   let downloaded = 0;
-  // Track raw bytes consumed for telemetry only — not enforced mid-stream
-  // (see Content-Length comment above for why).
+  let bytesCapHit = false;
+  // Defense-in-depth: enforce MAX_DOWNLOADED_BYTES even when Content-Length
+  // is absent or wrong. AbortController.abort() closes the socket, which
+  // errors the stream pipeline; we catch the AbortError below and treat it
+  // identically to a Content-Length oversize hit (advance cursor, skip).
   nodeStream.on("data", (chunk: Buffer) => {
     downloaded += chunk.length;
+    if (downloaded > MAX_DOWNLOADED_BYTES && !bytesCapHit) {
+      bytesCapHit = true;
+      try {
+        controller.abort();
+      } catch {
+        // best-effort
+      }
+    }
   });
   const added: ObservationRow[] = [];
   try {
@@ -420,11 +441,30 @@ export async function ingestGhArchive(
       const obs = await insertObservationIfNew(obsInput);
       if (obs) added.push(obs);
     }
+  } catch (err) {
+    if (!bytesCapHit) {
+      // Real I/O / decode error — let the dispatcher record it via
+      // `markSourcePolled(err)`. Cursor stays put so we retry next cycle.
+      throw err;
+    }
+    // bytesCapHit: oversize hour discovered mid-stream. Treat the same
+    // as a Content-Length pre-check failure: log + advance cursor (so we
+    // don't pin every cycle on the same bad file). Whatever observations
+    // we did manage to persist before the abort still count.
+    logger.warn(
+      {
+        sourceId: source.id,
+        targetHour,
+        downloadedBytes: downloaded,
+        cap: MAX_DOWNLOADED_BYTES,
+      },
+      `GH Archive: hour=${targetHour} exceeded byte cap mid-stream (downloaded=${downloaded}); skipping (cursor advanced)`,
+    );
   } finally {
     clearTimeout(timer);
     rl.close();
     // Detach the in-flight stream chain so the underlying socket closes
-    // promptly when we early-exit (event/observation cap or error).
+    // promptly when we early-exit (event/observation cap, abort, or error).
     try {
       nodeStream.unpipe();
       gunzip.destroy();
@@ -434,7 +474,15 @@ export async function ingestGhArchive(
     }
   }
 
-  // Advance cursor — successful (or successfully early-exited) read.
+  // Cursor policy (codified):
+  //   * 404 (hour not yet published)            → don't advance, retry
+  //   * Network / fetch error                   → don't advance, retry
+  //   * Decode / readline error mid-stream      → don't advance, retry
+  //   * Oversize hour (Content-Length OR mid-stream byte cap)
+  //                                             → advance, skip permanently
+  //   * Cap-induced early exit (events / obs)   → advance, normal completion
+  //   * Clean read to EOF                       → advance, normal completion
+  // Only successful (or successfully-skipped-as-oversize) reads land here.
   await updateSourceCursor(source.id, { lastFetchedHour: targetHour });
 
   logger.info(
