@@ -12,68 +12,14 @@ import {
   type ObservationRow,
 } from "./store";
 
-/**
- * GH Archive ingestor — https://www.gharchive.org/
- *
- * Each hour the project publishes the entire public GitHub event firehose
- * for that hour as a gzipped, newline-delimited JSON file at
- *   https://data.gharchive.org/YYYY-MM-DD-H.json.gz
- * (note: hour is *not* zero-padded — "3" not "03").
- *
- * One uncompressed dump is ~1GB and contains hundreds of thousands of
- * events, so we MUST stream-decode it (never JSON.parse the whole file)
- * and we MUST narrow it via a filter expression. The filter is stored in
- * `source.target` as a comma-separated mini-DSL of `key:value` pairs:
- *
- *   repo:facebook/                   — repo full_name starts with prefix
- *   repo:torvalds/linux              — exact repo full_name (still a prefix)
- *   event:PullRequestEvent           — exact event type match
- *   org:nodejs                       — owner / org login match
- *
- * Multiple filters are AND-combined. Empty target = match everything (only
- * useful with very small backfills since the per-cycle observation cap
- * still bites). Source dedup uses (kind, target), so two distinct filter
- * expressions are two distinct sources.
- *
- * Cursor stores `{ lastFetchedHour: "YYYY-MM-DD-H" }`. Each cycle we fetch
- * exactly ONE hour — either `nextHour(lastFetchedHour)` or, on first run,
- * the most recent fully-published hour (see PUBLISH_LAG_HOURS). A 404 means
- * the hour isn't published yet; we don't advance the cursor and retry next
- * cycle. Network errors throw and propagate to the dispatcher's
- * `markSourcePolled(err)` path; cursor stays put.
- */
+// gh_archive: stream-decode hourly GH Archive dumps from
+// https://data.gharchive.org/YYYY-MM-DD-H.json.gz, narrowed by a filter
+// stored in source.target. One hour per cycle. Cursor: { lastFetchedHour }.
 
-// ---- caps ----
-// Hard ceiling on a single hour's compressed size. Real hours are
-// 30-100MB. Anything larger almost certainly means the URL is wrong /
-// gharchive is misbehaving — we skip the hour (and advance the cursor)
-// rather than risk OOM or pin the cycle on a bad file forever.
-//
-// Enforcement is two-layered:
-//   1. Content-Length pre-check before we start the stream. Cheap, avoids
-//      pulling any bytes off the socket.
-//   2. Mid-stream byte counter that calls `controller.abort()` if the
-//      header was missing/wrong. The aborted fetch errors out the stream
-//      pipeline, we catch the AbortError, and we treat it as "oversize
-//      hour" — same outcome as path 1.
-//
-// Note: we deliberately do NOT push(null) into a mid-gzip member to stop
-// reading; that produces a Z_BUF_ERROR which would propagate as a real
-// failure and (per our cursor policy below) stall the source.
 const MAX_DOWNLOADED_BYTES = 120 * 1024 * 1024;
-// Upper bound on `JSON.parse` calls per cycle so a malformed / pathological
-// dump can't burn the loop. Real hours are ~150-300K events. This is also
-// the implicit memory ceiling when Content-Length is absent (300K events ×
-// ~500 bytes/event ≈ 150MB raw, safely below process limits).
 const MAX_EVENTS_PARSED = 300_000;
-// After filtering, hard cap on how many observations we hand to the
-// reflection pipeline per cycle. The rest is intentionally dropped.
 const MAX_OBSERVATIONS_PER_CYCLE = 25;
-// GH Archive publishes ~1-2 hours behind real time. On first poll we start
-// at (now - PUBLISH_LAG_HOURS) so we don't immediately 404.
 const PUBLISH_LAG_HOURS = 2;
-// Hard wall-clock timeout on the whole fetch+stream — long enough for an
-// 80MB gzip on a slow link, short enough not to wedge the cycle.
 const FETCH_TIMEOUT_MS = 90_000;
 
 interface GhArchiveCursor {
@@ -90,13 +36,16 @@ interface GhEvent {
   created_at?: string;
 }
 
+// Filter mini-DSL: comma-separated `key:value` pairs, AND-combined.
+//   repo:facebook/        repo full_name prefix
+//   event:ReleaseEvent    exact event type
+//   org:nodejs            owner / org login
 interface ParsedFilter {
-  repos: string[]; // lower-case prefixes of "owner/repo"
-  events: string[]; // exact event type names
-  orgs: string[]; // lower-case org / owner logins
+  repos: string[];
+  events: string[];
+  orgs: string[];
 }
 
-// ---- narrowing helpers (avoid `any` for the heterogeneous payload shape) ----
 function asObj(v: unknown): Record<string, unknown> | undefined {
   return v !== null && typeof v === "object" && !Array.isArray(v)
     ? (v as Record<string, unknown>)
@@ -135,8 +84,7 @@ function eventMatches(ev: GhEvent, f: ParsedFilter): boolean {
   }
   if (f.repos.length > 0) {
     const r = (ev.repo?.name ?? "").toLowerCase();
-    if (!r) return false;
-    if (!f.repos.some((p) => r.startsWith(p))) return false;
+    if (!r || !f.repos.some((p) => r.startsWith(p))) return false;
   }
   if (f.orgs.length > 0) {
     const o = (
@@ -188,12 +136,6 @@ function pickTargetHour(cursor: GhArchiveCursor): string {
   return hourKey(d);
 }
 
-/**
- * Render one event as an Observation. Title and snippet are tailored per
- * event type so reflections have something descriptive to chew on rather
- * than the raw JSON. URL prefers the canonical github.com link for the
- * underlying object; falls back to the repo URL.
- */
 function renderEvent(
   source: SourceRow,
   ev: GhEvent,
@@ -268,17 +210,14 @@ function renderEvent(
 
   if (!url) url = `https://github.com/${repo}`;
 
-  // urlHash uniqueness key. Scope by sourceId so two distinct gh_archive
-  // sources with overlapping filters each ingest the same event into their
-  // own reflection chain (otherwise the second one would be silently
-  // dropped by the (urlHash) UNIQUE constraint). Within a single source we
-  // dedup by the firehose's own event id (globally unique) when present,
-  // falling back to a content key for the rare missing-id case.
+  // Scope dedup by sourceId so two gh_archive sources with overlapping
+  // filters each get their own observation + reflection chain.
   const evKey = ev.id
     ? ev.id
     : `${repo}:${type}:${ev.created_at ?? ""}:${actor}`;
-  const dedupKey = `gha:${source.id}:${evKey}`;
-  const urlHash = createHash("sha256").update(dedupKey).digest("hex");
+  const urlHash = createHash("sha256")
+    .update(`gha:${source.id}:${evKey}`)
+    .digest("hex");
 
   return {
     sourceId: source.id,
@@ -299,17 +238,12 @@ export async function ingestGhArchive(
     ((await getSourceCursor(source.id)) as GhArchiveCursor | null) ?? {};
   const targetHour = pickTargetHour(cursor);
 
-  // Don't try to fetch hours that physically can't exist yet (avoids a
-  // guaranteed 404 + log noise).
+  // Skip target hours that physically can't exist yet (avoids a guaranteed 404).
   const earliest = new Date();
   earliest.setUTCHours(earliest.getUTCHours() - 1);
   if (parseHourKey(targetHour) > earliest) {
     logger.debug(
-      {
-        sourceId: source.id,
-        targetHour,
-        lastFetched: cursor.lastFetchedHour ?? null,
-      },
+      { sourceId: source.id, targetHour },
       "GH Archive: target hour not yet published, skipping cycle",
     );
     return { added: [] };
@@ -325,7 +259,7 @@ export async function ingestGhArchive(
       headers: {
         "user-agent":
           "Ephemeroi/0.1 (autonomous explorer; +https://replit.com)",
-        "accept-encoding": "identity", // we want raw .gz, not double-encoded
+        "accept-encoding": "identity",
       },
       signal: controller.signal,
     });
@@ -336,8 +270,7 @@ export async function ingestGhArchive(
     );
   }
 
-  // 404 = the hour isn't published yet (or never will be — gharchive has
-  // historical gaps). Don't advance the cursor; we'll retry next cycle.
+  // 404: hour not yet published. Don't advance — retry next cycle.
   if (resp.status === 404) {
     clearTimeout(timer);
     logger.info(
@@ -353,73 +286,47 @@ export async function ingestGhArchive(
     );
   }
 
-  // Pre-flight size check via Content-Length. We refuse to start
-  // streaming a gzip larger than MAX_DOWNLOADED_BYTES because (a) it's
-  // almost certainly malformed and (b) truncating mid-gzip produces a
-  // Z_BUF_ERROR that would throw out of the for-await loop and prevent
-  // the cursor from advancing — stalling the source forever on the same
-  // bad hour. Skipping the hour AND advancing the cursor breaks the
-  // stall. If Content-Length is absent (rare for gharchive), we proceed
-  // and rely on MAX_EVENTS_PARSED as the implicit memory ceiling.
+  // Cap layer 1: Content-Length pre-check. Skip oversize hours and
+  // advance the cursor (otherwise the source pins forever on a bad file).
   const contentLengthHeader = resp.headers.get("content-length");
-  const contentLength = contentLengthHeader
-    ? Number(contentLengthHeader)
-    : null;
-  if (contentLength !== null && Number.isFinite(contentLength) && contentLength > MAX_DOWNLOADED_BYTES) {
+  const contentLength = contentLengthHeader ? Number(contentLengthHeader) : null;
+  if (
+    contentLength !== null &&
+    Number.isFinite(contentLength) &&
+    contentLength > MAX_DOWNLOADED_BYTES
+  ) {
     clearTimeout(timer);
-    try {
-      // Cancel the in-flight body so the socket closes promptly.
-      controller.abort();
-    } catch {
-      // best-effort
-    }
+    controller.abort();
     await updateSourceCursor(source.id, { lastFetchedHour: targetHour });
     logger.warn(
-      {
-        sourceId: source.id,
-        targetHour,
-        contentLength,
-        cap: MAX_DOWNLOADED_BYTES,
-      },
-      `GH Archive: hour=${targetHour} content-length ${contentLength} exceeds cap ${MAX_DOWNLOADED_BYTES}; skipping (cursor advanced)`,
+      { sourceId: source.id, targetHour, contentLength, cap: MAX_DOWNLOADED_BYTES },
+      `GH Archive: hour=${targetHour} content-length ${contentLength} exceeds cap; skipping`,
     );
     return { added: [] };
   }
 
-  // Pipeline: web ReadableStream → Node Readable → gunzip → readline.
-  // The node:stream/web ReadableStream type is structurally identical to
-  // the global one but TypeScript treats them as distinct, so cast through
-  // the typed shape rather than `any`.
   const nodeStream = Readable.fromWeb(
     resp.body as unknown as NodeWebReadableStream<Uint8Array>,
   );
   const gunzip = createGunzip();
-  // Forward fetch-side errors onto the readline input stream so the
-  // for-await loop rejects rather than silently hanging.
   nodeStream.on("error", (err) => gunzip.destroy(err));
   nodeStream.pipe(gunzip);
-
   const rl = createInterface({ input: gunzip, crlfDelay: Infinity });
 
   let parsed = 0;
   let matched = 0;
   let downloaded = 0;
   let bytesCapHit = false;
-  // Defense-in-depth: enforce MAX_DOWNLOADED_BYTES even when Content-Length
-  // is absent or wrong. AbortController.abort() closes the socket, which
-  // errors the stream pipeline; we catch the AbortError below and treat it
-  // identically to a Content-Length oversize hit (advance cursor, skip).
+  // Cap layer 2: enforce byte cap mid-stream when Content-Length is missing.
+  // Aborting the controller errors the pipeline; we treat that as oversize.
   nodeStream.on("data", (chunk: Buffer) => {
     downloaded += chunk.length;
     if (downloaded > MAX_DOWNLOADED_BYTES && !bytesCapHit) {
       bytesCapHit = true;
-      try {
-        controller.abort();
-      } catch {
-        // best-effort
-      }
+      controller.abort();
     }
   });
+
   const added: ObservationRow[] = [];
   try {
     for await (const line of rl) {
@@ -431,7 +338,7 @@ export async function ingestGhArchive(
       try {
         ev = JSON.parse(trimmed) as GhEvent;
       } catch {
-        continue; // skip malformed lines, keep going
+        continue;
       }
       parsed += 1;
       if (!eventMatches(ev, filter)) continue;
@@ -442,47 +349,21 @@ export async function ingestGhArchive(
       if (obs) added.push(obs);
     }
   } catch (err) {
-    if (!bytesCapHit) {
-      // Real I/O / decode error — let the dispatcher record it via
-      // `markSourcePolled(err)`. Cursor stays put so we retry next cycle.
-      throw err;
-    }
-    // bytesCapHit: oversize hour discovered mid-stream. Treat the same
-    // as a Content-Length pre-check failure: log + advance cursor (so we
-    // don't pin every cycle on the same bad file). Whatever observations
-    // we did manage to persist before the abort still count.
+    if (!bytesCapHit) throw err;
     logger.warn(
-      {
-        sourceId: source.id,
-        targetHour,
-        downloadedBytes: downloaded,
-        cap: MAX_DOWNLOADED_BYTES,
-      },
-      `GH Archive: hour=${targetHour} exceeded byte cap mid-stream (downloaded=${downloaded}); skipping (cursor advanced)`,
+      { sourceId: source.id, targetHour, downloadedBytes: downloaded, cap: MAX_DOWNLOADED_BYTES },
+      `GH Archive: hour=${targetHour} exceeded byte cap mid-stream (downloaded=${downloaded}); skipping`,
     );
   } finally {
     clearTimeout(timer);
     rl.close();
-    // Detach the in-flight stream chain so the underlying socket closes
-    // promptly when we early-exit (event/observation cap, abort, or error).
-    try {
-      nodeStream.unpipe();
-      gunzip.destroy();
-      nodeStream.destroy();
-    } catch {
-      // best-effort cleanup
-    }
+    nodeStream.unpipe();
+    gunzip.destroy();
+    nodeStream.destroy();
   }
 
-  // Cursor policy (codified):
-  //   * 404 (hour not yet published)            → don't advance, retry
-  //   * Network / fetch error                   → don't advance, retry
-  //   * Decode / readline error mid-stream      → don't advance, retry
-  //   * Oversize hour (Content-Length OR mid-stream byte cap)
-  //                                             → advance, skip permanently
-  //   * Cap-induced early exit (events / obs)   → advance, normal completion
-  //   * Clean read to EOF                       → advance, normal completion
-  // Only successful (or successfully-skipped-as-oversize) reads land here.
+  // Cursor advances on: clean read, cap-induced early exit, oversize hour.
+  // Cursor stays put on: 404, network/decode error (handled via thrown errors above).
   await updateSourceCursor(source.id, { lastFetchedHour: targetHour });
 
   logger.info(
