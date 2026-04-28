@@ -35,7 +35,7 @@ The AI speaks in a single first-person voice across every step. All system promp
 - **Real-time Updates**: Server-Sent Events (SSE) stream (`/api/ephemeroi/stream`) for various events including `observation`, `belief`, `contradiction`, `report`, `constellation_alert`.
 - **GitHub Source Kind**: First-class support for watching GitHub repositories and user/organization activity.
 - **GH Archive Source Kind**: Streams public GitHub event firehose with filtering, designed for efficient, memory-safe processing.
-- **Autonomy**: Can autonomously discover and add new GitHub sources based on reflected observations and an LLM judge.
+- **Autonomy**: Can autonomously discover and add new GitHub sources based on reflected observations and an LLM judge. **Discovery bar (April 2026):** a candidate is only added if it can be incorporated to further advance Ephemeroi itself — its PHASELOCK-SAT solver, observer/reflection loop, autonomy/discovery layer, theory, or production substrate. Lateral or merely-thematic picks are rejected. Reasons must start with `Advances solver:`, `Advances loop:`, `Advances autonomy:`, or `Advances theory:` (see `discover.ts`).
 - **Constellation Alerts**: Per-source 4D state vector (Capability/Integrity/Usability/Trust) that updates with reflections. Reports clearing a threshold trigger Don/Wife/Son narrated alerts via Telegram.
 - **Biomimetic Protocol**: Generates and solves a synthetic 3-SAT problem, emitting `constellation_alert` events on significant moments (cage, edict, invariant violation).
 - **Self-Improvement**: Reads whitelisted source files, asks `gpt-4o-mini` for patches, validates, applies, and reports via Telegram.
