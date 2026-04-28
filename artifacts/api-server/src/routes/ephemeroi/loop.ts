@@ -124,7 +124,7 @@ class EphemeroiLoop {
         await this.cycle();
       }
     } catch (err) {
-      this.lastError = err instanceof Error ? err.message : 'Unknown error occurred';
+      this.lastError = err instanceof Error ? err.message : String(err);
       logger.warn({ err }, "Ephemeroi loop tick failed");
     } finally {
       void this.scheduleNext();
