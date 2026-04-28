@@ -2,6 +2,11 @@
 
 Ephemeroi is an always-on cognitive substrate: an autonomous observer + multispectral SAT solver, with a persistent belief system, a Telegram-narrated persona stack (Don / Wife / Son), and a metacognitive search interface. Its operational core is **PHASELOCK‑SAT** — a multispectral local‑search solver with illumination engineering and phase mobility.
 
+> ## Guiding Premise
+>
+> Understanding the way the outside world works is how we navigate and build the computer world and manage the Internet world.
+> This is one of the main beliefs the system strives to act on — *learn more, prove theories.*
+
 The full theoretical framing lives in [`THEORY.md`](./THEORY.md). The algorithm itself is below.
 
 ---
