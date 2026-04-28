@@ -2,6 +2,7 @@ import { logger } from "../../lib/logger";
 import { askDon } from "./don";
 import { bus } from "./bus";
 import { sendTelegramText } from "./telegram";
+import { recordBiomimeticField } from "./cognitiveField";
 
 /**
  * Biomimetic Constraint-Field Solver — v0.11.3
@@ -291,6 +292,30 @@ export async function runBiomimetic(
     },
     "Biomimetic run complete",
   );
+
+  // Feed the run's final field state into the unified cognitive substrate.
+  // This is the bridge between the constraint-field engine and the bot's
+  // worldview: opinion decay rate and the Don/Wife/Son tonal directive
+  // are both downstream consumers of the most recent snapshot.
+  // We use the *last* step's metrics rather than aggregates because the
+  // field state at the end of a run is what represents the system's
+  // current cognitive weather — earlier turbulence is already baked into
+  // the trajectory.
+  try {
+    const last = timeline[timeline.length - 1];
+    if (last) {
+      recordBiomimeticField({
+        consensusMean: last.consensusMean,
+        pressureVariance: last.pressureVariance,
+        cageEvents,
+        solved,
+      });
+    }
+  } catch (err) {
+    // Cognitive-field recording is purely a side effect — never fail a
+    // run because the substrate update threw.
+    logger.warn({ err }, "Biomimetic: cognitive field record failed");
+  }
 
   return {
     solved,

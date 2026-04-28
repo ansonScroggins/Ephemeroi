@@ -21,6 +21,7 @@ import type {
   EphemeroiBeliefsResponse,
   EphemeroiBiomimeticOptions,
   EphemeroiBiomimeticResult,
+  EphemeroiCognitiveFieldResponse,
   EphemeroiContradictionsResponse,
   EphemeroiCycleResult,
   EphemeroiObservationsResponse,
@@ -1356,6 +1357,94 @@ export function useListEphemeroiTopicBeliefs<
     params,
     options,
   );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Latest snapshot from the biomimetic constraint-field solver, exposed
+as the unified cognitive substrate that ties opinion dynamics and
+the Don/Wife/Son persona together. `mood` is a coarse label
+("settled" | "contested" | "oscillating" | "neutral") derived from
+the underlying field metrics; downstream consumers (UI badge,
+decay-rate modulator, persona tonal directive) all switch on it.
+Returns null fields when no biomimetic run has happened yet —
+callers should treat that as "neutral".
+
+ * @summary Current cognitive-field snapshot from the biomimetic substrate
+ */
+export const getGetEphemeroiCognitiveFieldUrl = () => {
+  return `/api/ephemeroi/cognitive-field`;
+};
+
+export const getEphemeroiCognitiveField = async (
+  options?: RequestInit,
+): Promise<EphemeroiCognitiveFieldResponse> => {
+  return customFetch<EphemeroiCognitiveFieldResponse>(
+    getGetEphemeroiCognitiveFieldUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetEphemeroiCognitiveFieldQueryKey = () => {
+  return [`/api/ephemeroi/cognitive-field`] as const;
+};
+
+export const getGetEphemeroiCognitiveFieldQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEphemeroiCognitiveField>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiCognitiveField>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetEphemeroiCognitiveFieldQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEphemeroiCognitiveField>>
+  > = ({ signal }) => getEphemeroiCognitiveField({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiCognitiveField>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEphemeroiCognitiveFieldQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEphemeroiCognitiveField>>
+>;
+export type GetEphemeroiCognitiveFieldQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Current cognitive-field snapshot from the biomimetic substrate
+ */
+
+export function useGetEphemeroiCognitiveField<
+  TData = Awaited<ReturnType<typeof getEphemeroiCognitiveField>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiCognitiveField>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEphemeroiCognitiveFieldQueryOptions(options);
 
   const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
     queryKey: QueryKey;

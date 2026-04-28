@@ -2,6 +2,8 @@ import { logger } from "../../lib/logger";
 import { sendTelegramText } from "./telegram";
 import { downloadAndExtractPdfText, PdfReadError } from "./pdfReader";
 import { extractAndUpsertTopicBeliefs } from "./topicBeliefs";
+import { findRelevantOpinionsForQuestion, type TopicBeliefRow } from "./store";
+import { personaMoodDirective } from "./cognitiveField";
 import { openai } from "@workspace/integrations-openai-ai-server";
 
 /**
@@ -399,7 +401,7 @@ export async function answerWithWebSearch(question: string): Promise<string> {
   // every answer; the Wife and Son chime in only when their angle adds
   // something the Don alone wouldn't say. We *want* opinions here — that's
   // the whole point of the autonomous belief loop downstream.
-  const sys = [
+  const baseSys = [
     "You are a small council answering on behalf of Ephemeroi: The Don (calm, strategic, mob-boss style — the lead voice), with The Wife (sharper strategic insight) and The Son (younger, activist energy) chiming in only when their angle adds something the Don alone wouldn't say.",
     "Take a stance — don't just report neutrally. Have an opinion. Be willing to disagree with received wisdom when you have a reason. The user prefers a personal take over hedged neutrality.",
     "Lead every answer with The Don. Bring in The Wife or The Son sparingly — at most once each per answer, and only when they actually add a distinct angle.",
@@ -408,7 +410,27 @@ export async function answerWithWebSearch(question: string): Promise<string> {
     "When you used the web, cite sources inline as [1], [2] and list them at the end as '1. <title> — <url>'.",
     "Plain text only — no markdown formatting like ** or _. Aim for under 2500 characters total so it fits a single Telegram message.",
     "If neither prior knowledge nor the web yields an answer, say so honestly in The Don's voice.",
-  ].join(" ");
+  ];
+
+  // Cross-surface coherence: surface the most relevant *prior* opinions on
+  // the subjects mentioned in this question so the council reads as
+  // continuous-with-itself rather than a memoryless Q&A box. Soft directive
+  // — the council CAN revise its prior position if the new evidence
+  // genuinely overrides it (and the opinion-dynamics model in store.ts
+  // will record the flip), but in the absence of override they should be
+  // coherent with what they already said. This is why we instruct
+  // "stay coherent unless..." rather than "agree with..." — coherence
+  // tolerates both reaffirmation and intentional revision, but rules out
+  // accidentally contradicting yourself just because you forgot.
+  const priorOpinionsBlock = await buildPriorOpinionsInstruction(question);
+  // Cognitive-field tonal directive from the biomimetic substrate. May be
+  // null if no run yet — in that case the council just operates from the
+  // base persona without an extra mood line.
+  const moodDirective = personaMoodDirective();
+
+  const sys = [...baseSys, priorOpinionsBlock, moodDirective]
+    .filter((s): s is string => !!s && s.length > 0)
+    .join(" ");
 
   // Use the Responses API's `instructions` channel rather than concatenating
   // the persona into the user-facing input. The instructions channel takes
@@ -441,4 +463,36 @@ export async function answerWithWebSearch(question: string): Promise<string> {
 
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
+}
+
+/**
+ * Build the "your prior positions" instruction block for the persona.
+ * Returns null if no relevant priors exist (in which case the persona
+ * just operates from base instructions). Never throws — a lookup failure
+ * just means we skip the block, not that the answer fails.
+ */
+async function buildPriorOpinionsInstruction(
+  question: string,
+): Promise<string | null> {
+  let priors: TopicBeliefRow[];
+  try {
+    priors = await findRelevantOpinionsForQuestion(question, 3);
+  } catch (err) {
+    logger.warn({ err }, "telegramAnswer: prior opinion lookup failed");
+    return null;
+  }
+  if (priors.length === 0) return null;
+
+  const formatted = priors
+    .map((p) => {
+      const conf = Math.round(p.confidence * 100);
+      const flips = p.flipCount > 0 ? `, ${p.flipCount} prior flip(s)` : "";
+      return `"${p.subject}": ${p.stance} (confidence ${conf}%${flips})`;
+    })
+    .join(" | ");
+
+  return (
+    `Your prior positions on subjects in this question — stay coherent with these unless the new evidence genuinely overrides them. ` +
+    `If you change your mind, do it explicitly ("On reflection, The Don revises…") rather than silently. Priors: ${formatted}.`
+  );
 }

@@ -21,6 +21,8 @@ export interface EphemeroiTopicBelief {
   confidence: number;
   /** Number of distinct exchanges that have written to this belief. */
   evidenceCount: number;
+  /** Number of times this opinion has flipped to the opposite stance over its lifetime. A high count means the bot is oscillating on this subject. */
+  flipCount: number;
   lastEvidence?: string | null;
   /** Which channel last touched this belief — "qa" (typed Telegram question) or "pdf" (uploaded PDF). */
   lastSourceKind?: string | null;

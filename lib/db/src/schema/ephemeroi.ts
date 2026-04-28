@@ -212,10 +212,26 @@ export const ephemeroiTopicBeliefsTable = pgTable(
           evidence?: string;
           sourceKind?: string;
           at: string;
+          /** Set when this entry recorded a stance flip (opposite sign). */
+          flip?: boolean;
+          /** Set when the entry was a passive decay step (no new evidence). */
+          decay?: boolean;
         }>
       >()
       .notNull()
       .default([]),
+    /**
+     * How many times this opinion has flipped to the opposite stance over its
+     * lifetime. A high count means the bot is unsure / oscillating. Surfaced
+     * to the UI so flips are visible at a glance.
+     */
+    flipCount: integer("flip_count").notNull().default(0),
+    /**
+     * Last time the periodic decay tick touched this row (or null if never).
+     * Used to bound the decay step so a row that gets reinforced often
+     * doesn't decay between updates, and to space decay applications.
+     */
+    lastDriftAt: timestamp("last_drift_at", { withTimezone: true }),
     firstSeenAt: timestamp("first_seen_at", { withTimezone: true })
       .notNull()
       .defaultNow(),

@@ -322,6 +322,27 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EphemeroiTopicBeliefsResponse"
+  /ephemeroi/cognitive-field:
+    get:
+      operationId: getEphemeroiCognitiveField
+      tags: [ephemeroi]
+      summary: Current cognitive-field snapshot from the biomimetic substrate
+      description: |
+        Latest snapshot from the biomimetic constraint-field solver, exposed
+        as the unified cognitive substrate that ties opinion dynamics and
+        the Don/Wife/Son persona together. `mood` is a coarse label
+        ("settled" | "contested" | "oscillating" | "neutral") derived from
+        the underlying field metrics; downstream consumers (UI badge,
+        decay-rate modulator, persona tonal directive) all switch on it.
+        Returns null fields when no biomimetic run has happened yet —
+        callers should treat that as "neutral".
+      responses:
+        "200":
+          description: Current cognitive field, with null snapshot if not yet computed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiCognitiveFieldResponse"
   /ephemeroi/beliefs/by-source:
     get:
       operationId: listEphemeroiBeliefsBySource
@@ -1298,6 +1319,9 @@ components:
         evidenceCount:
           type: integer
           description: Number of distinct exchanges that have written to this belief.
+        flipCount:
+          type: integer
+          description: Number of times this opinion has flipped to the opposite stance over its lifetime. A high count means the bot is oscillating on this subject.
         lastEvidence:
           type: string
           nullable: true
@@ -1324,6 +1348,7 @@ components:
           stance,
           confidence,
           evidenceCount,
+          flipCount,
           history,
           firstSeenAt,
           lastUpdatedAt,
@@ -1337,6 +1362,45 @@ components:
           items:
             $ref: "#/components/schemas/EphemeroiTopicBelief"
       required: [beliefs]
+
+    EphemeroiCognitiveFieldResponse:
+      type: object
+      description: |
+        Snapshot of the unified cognitive field. `snapshot` is null when no
+        biomimetic run has happened yet — `mood` will be "neutral" in that
+        case and `decayMultiplier` will be 1.0.
+      properties:
+        mood:
+          type: string
+          enum: [settled, contested, oscillating, neutral]
+          description: Coarse mood label derived from the field metrics.
+        decayMultiplier:
+          type: number
+          description: Multiplier applied to the opinion-decay half-life. >1 = opinions stick longer; <1 = opinions move faster.
+        snapshot:
+          nullable: true
+          type: object
+          properties:
+            consensusMean:
+              type: number
+              minimum: 0
+              maximum: 1
+            turbulence:
+              type: number
+              minimum: 0
+              maximum: 1
+            conflict:
+              type: number
+              minimum: 0
+              maximum: 1
+              description: Cage-event intensity, scaled to [0, 1].
+            solved:
+              type: boolean
+            capturedAt:
+              type: string
+              format: date-time
+          required: [consensusMean, turbulence, conflict, solved, capturedAt]
+      required: [mood, decayMultiplier, snapshot]
 
     EphemeroiBeliefsBySourceResponse:
       type: object

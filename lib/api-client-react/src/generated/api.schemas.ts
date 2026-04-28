@@ -647,6 +647,8 @@ export interface EphemeroiTopicBelief {
   confidence: number;
   /** Number of distinct exchanges that have written to this belief. */
   evidenceCount: number;
+  /** Number of times this opinion has flipped to the opposite stance over its lifetime. A high count means the bot is oscillating on this subject. */
+  flipCount: number;
   lastEvidence?: string | null;
   /** Which channel last touched this belief — "qa" (typed Telegram question) or "pdf" (uploaded PDF). */
   lastSourceKind?: string | null;
@@ -658,6 +660,54 @@ export interface EphemeroiTopicBelief {
 
 export interface EphemeroiTopicBeliefsResponse {
   beliefs: EphemeroiTopicBelief[];
+}
+
+/**
+ * Coarse mood label derived from the field metrics.
+ */
+export type EphemeroiCognitiveFieldResponseMood =
+  (typeof EphemeroiCognitiveFieldResponseMood)[keyof typeof EphemeroiCognitiveFieldResponseMood];
+
+export const EphemeroiCognitiveFieldResponseMood = {
+  settled: "settled",
+  contested: "contested",
+  oscillating: "oscillating",
+  neutral: "neutral",
+} as const;
+
+export type EphemeroiCognitiveFieldResponseSnapshot = {
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  consensusMean: number;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  turbulence: number;
+  /**
+   * Cage-event intensity, scaled to [0, 1].
+   * @minimum 0
+   * @maximum 1
+   */
+  conflict: number;
+  solved: boolean;
+  capturedAt: string;
+} | null;
+
+/**
+ * Snapshot of the unified cognitive field. `snapshot` is null when no
+biomimetic run has happened yet — `mood` will be "neutral" in that
+case and `decayMultiplier` will be 1.0.
+
+ */
+export interface EphemeroiCognitiveFieldResponse {
+  /** Coarse mood label derived from the field metrics. */
+  mood: EphemeroiCognitiveFieldResponseMood;
+  /** Multiplier applied to the opinion-decay half-life. >1 = opinions stick longer; <1 = opinions move faster. */
+  decayMultiplier: number;
+  snapshot: EphemeroiCognitiveFieldResponseSnapshot;
 }
 
 export type EphemeroiBeliefsBySourceResponseContradictionsItem = {

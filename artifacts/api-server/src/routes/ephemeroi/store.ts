@@ -9,7 +9,7 @@ import {
   ephemeroiSourceStateTable,
   ephemeroiTopicBeliefsTable,
 } from "@workspace/db";
-import { eq, desc, asc, and, sql } from "drizzle-orm";
+import { eq, desc, asc, and, gte, sql } from "drizzle-orm";
 
 // ===== Settings (singleton) =====
 
@@ -836,6 +836,36 @@ function clamp(x: number, lo: number, hi: number): number {
 
 const TOPIC_HISTORY_CAP = 10;
 
+/**
+ * Threshold on signed-confidence magnitude required to flip stance after
+ * blending opposite-stance evidence with the prior. Lower = flips more
+ * easily (the bot reads as flighty); higher = stance is sticky and old
+ * positions hold even against contradicting evidence (the bot reads as
+ * stubborn). 0.15 is a deliberate middle: a single moderate-confidence
+ * contradiction CAN'T flip a strong prior, but two moderate ones in
+ * quick succession CAN.
+ */
+const FLIP_SIGNED_THRESHOLD = 0.15;
+
+/**
+ * Reinforcement weight: when same-stance evidence arrives, the new
+ * confidence climbs by `(1 - prev) * REINFORCE_WEIGHT * input_conf`. This
+ * gives diminishing returns — a stance at 0.9 barely moves on more
+ * agreement, while a stance at 0.4 moves substantially. Matches how
+ * bayesian belief revision typically behaves.
+ */
+const REINFORCE_WEIGHT = 0.4;
+
+/**
+ * Default half-life for passive opinion decay, in milliseconds. Without
+ * any new evidence, an opinion's confidence drifts toward neutral 0.5 at
+ * this rate. Modulated by the cognitive field — see
+ * `cognitiveField.decayHalfLifeMultiplier`.
+ */
+const DEFAULT_OPINION_HALF_LIFE_MS =
+  Number(process.env["EPHEMEROI_OPINION_HALF_LIFE_MS"]) ||
+  7 * 24 * 60 * 60 * 1000; // 7 days
+
 export interface TopicBeliefRow {
   id: number;
   subject: string;
@@ -852,7 +882,11 @@ export interface TopicBeliefRow {
     evidence?: string;
     sourceKind?: string;
     at: string;
+    flip?: boolean;
+    decay?: boolean;
   }>;
+  flipCount: number;
+  lastDriftAt: Date | null;
   firstSeenAt: Date;
   lastUpdatedAt: Date;
 }
@@ -883,11 +917,68 @@ export function topicSubjectKey(subject: string): string {
 }
 
 /**
- * Upsert a topic belief by subjectKey. On first sight: insert with
- * evidenceCount=1 and a single-entry history. On subsequent sight: bump
- * stance/confidence/evidence in place and prepend a history entry (capped
- * at TOPIC_HISTORY_CAP). Returns the resulting row so callers can log the
- * delta if useful.
+ * Coarse semantic alignment between two stance strings. We don't have a
+ * stance taxonomy — the extractor produces freeform short sentences — so
+ * the cheapest signal is "is this stance saying the same thing or the
+ * opposite of what we already had?". We approximate with two heuristics:
+ *
+ *   1. Exact-or-substring match → +1 (clearly aligned)
+ *   2. Negation-marker asymmetry → −0.6 (one says "not / never / against",
+ *      the other doesn't)
+ *   3. Otherwise → token Jaccard, mapped roughly to [-0.5, +1] via
+ *      `2·j − 0.5` (clamped to [−1, +1]), with a small positive bias
+ *      because two stances about the same subject that share substantial
+ *      vocabulary are usually the same direction.
+ *
+ * This is intentionally crude — only the SIGN of the return value drives
+ * branch selection in `upsertTopicBelief` (reinforce vs blend), and the
+ * FLIP_SIGNED_THRESHOLD gate (which works on confidence, not on this
+ * alignment) prevents single noisy alignments from flipping a sticky
+ * stance. We clamp to [-1, +1] anyway so callers can rely on the range.
+ */
+export function stanceAlignment(prev: string, next: string): number {
+  const a = prev.toLowerCase().trim();
+  const b = next.toLowerCase().trim();
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  if (a.includes(b) || b.includes(a)) return 0.8;
+
+  const negPattern = /\b(not|never|no|against|reject|oppose|wrong|false|disagree|doubt|skeptic|skeptical)\b/;
+  const aNeg = negPattern.test(a);
+  const bNeg = negPattern.test(b);
+  // XOR — exactly one side carries a negation marker → we read them as
+  // opposite directions on the same subject.
+  if (aNeg !== bNeg) return -0.6;
+
+  const aTok = new Set(a.split(/[^a-z0-9]+/).filter((t) => t.length >= 3));
+  const bTok = new Set(b.split(/[^a-z0-9]+/).filter((t) => t.length >= 3));
+  if (aTok.size === 0 || bTok.size === 0) return 0;
+  let inter = 0;
+  for (const t of aTok) if (bTok.has(t)) inter++;
+  const union = aTok.size + bTok.size - inter;
+  if (union === 0) return 0;
+  const jaccard = inter / union;
+  return clamp(2 * jaccard - 0.5, -1, 1);
+}
+
+/**
+ * Upsert a topic belief by subjectKey, applying the opinion-dynamics model:
+ *
+ *   * **First sight** — insert with `confidence = input.confidence`,
+ *     evidenceCount=1, single-entry history.
+ *   * **Reinforcement** (alignment ≥ 0) — keep prior stance, climb confidence
+ *     with diminishing returns: `prev + (1 − prev) · REINFORCE_WEIGHT · input.confidence`.
+ *   * **Contradiction** (alignment < 0) — blend in *signed-confidence space*:
+ *     `signed = prevSign · prevConf − inputConf` (the new evidence pulls in
+ *     the opposite direction). The result's magnitude is the new confidence;
+ *     stance flips iff the resulting sign is opposite the prior AND the
+ *     magnitude clears `FLIP_SIGNED_THRESHOLD`. Sub-threshold contradictions
+ *     just *erode* confidence without flipping — the bot's prior position
+ *     wobbles before it falls.
+ *
+ * Concurrency: same as the prior implementation — `db.transaction` with
+ * `SELECT ... FOR UPDATE` serializes existing-row updates, plus a one-time
+ * retry on PostgreSQL `23505` to handle the lost-INSERT race.
  */
 export async function upsertTopicBelief(
   input: TopicBeliefUpsertInput,
@@ -903,14 +994,6 @@ export async function upsertTopicBelief(
   const sourceKind = input.sourceKind?.trim() || null;
   const question = input.question?.trim() || null;
   const now = new Date();
-
-  const newHistoryEntry = {
-    stance,
-    confidence,
-    ...(evidence ? { evidence } : {}),
-    ...(sourceKind ? { sourceKind } : {}),
-    at: now.toISOString(),
-  };
 
   // Concurrency model: the Telegram pipeline fires extraction-and-upsert
   // calls in detached promises, so two answers landing close together (or a
@@ -937,6 +1020,13 @@ export async function upsertTopicBelief(
         .limit(1);
 
       if (existing.length === 0) {
+        const newHistoryEntry = {
+          stance,
+          confidence,
+          ...(evidence ? { evidence } : {}),
+          ...(sourceKind ? { sourceKind } : {}),
+          at: now.toISOString(),
+        };
         const inserted = await tx
           .insert(ephemeroiTopicBeliefsTable)
           .values({
@@ -949,6 +1039,7 @@ export async function upsertTopicBelief(
             lastSourceKind: sourceKind,
             lastQuestion: question,
             history: [newHistoryEntry],
+            flipCount: 0,
             firstSeenAt: now,
             lastUpdatedAt: now,
           })
@@ -957,6 +1048,74 @@ export async function upsertTopicBelief(
       }
 
       const prev = existing[0]!;
+
+      // Opinion dynamics: figure out whether this new evidence is
+      // reinforcing the prior stance or contradicting it, then blend.
+      const alignment = stanceAlignment(prev.stance, stance);
+      let nextStance = prev.stance;
+      let nextConfidence: number;
+      let flipped = false;
+
+      if (alignment >= 0) {
+        // Reinforcement — same direction. Climb confidence with diminishing
+        // returns. The new stance text REPLACES the prior text only if the
+        // new evidence is at least as confident as the prior — otherwise
+        // we keep the more confident phrasing on file. (We're not voting on
+        // "which sentence is prettier", we're tracking who said it harder.)
+        nextConfidence = clamp(
+          prev.confidence + (1 - prev.confidence) * REINFORCE_WEIGHT * confidence,
+          0,
+          1,
+        );
+        if (confidence >= prev.confidence) nextStance = stance;
+      } else {
+        // Contradiction — blend in 0.5-centered *signed-conviction* space so
+        // the active blend agrees with the passive decay loop (which also
+        // treats 0.5 as neutral). The prior's signed conviction is
+        // (prev.confidence − 0.5) ∈ [−0.5, +0.5], positive = still believes
+        // the prior stance. The new evidence pulls in the opposite direction
+        // with strength `confidence · REINFORCE_WEIGHT` (same diminishing-
+        // returns weight we use for reinforcement, so a single contradiction
+        // can't catastrophically wipe out prior conviction).
+        //
+        // Outcomes:
+        //   blendedSigned > 0  → prior survives, eroded toward neutral
+        //   blendedSigned < 0  AND |blendedSigned| ≥ FLIP_SIGNED_THRESHOLD
+        //                      → new stance wins, adopt it
+        //   blendedSigned < 0  but sub-threshold → prior wobbles, conf
+        //                      collapses toward 0.5 but stance is held
+        //
+        // Wire confidence is "how strongly we hold the *current* stance",
+        // so it is clamped to [0.5, 1] — going below 0.5 in the same stance
+        // would be incoherent (it would mean we're more confident in the
+        // opposite, which is the FLIP case).
+        const prevSigned = prev.confidence - 0.5;
+        const blendedSigned = prevSigned - confidence * REINFORCE_WEIGHT;
+        if (blendedSigned <= -FLIP_SIGNED_THRESHOLD) {
+          // Decisive flip — adopt the new stance with conviction equal to
+          // the magnitude that crossed the threshold (so a borderline flip
+          // arrives with low confidence and a strong flip arrives strong).
+          nextStance = stance;
+          flipped = true;
+          nextConfidence = clamp(0.5 + Math.abs(blendedSigned), 0.5, 1);
+        } else {
+          // No flip → prior stance is held, but contradictory evidence must
+          // never INCREASE confidence in that prior. We use the positive
+          // remainder of blendedSigned as the surviving conviction; a
+          // sub-threshold negative blend collapses cleanly to exact
+          // neutral (0.5).
+          nextConfidence = clamp(0.5 + Math.max(0, blendedSigned), 0.5, 1);
+        }
+      }
+
+      const newHistoryEntry = {
+        stance: nextStance,
+        confidence: nextConfidence,
+        ...(evidence ? { evidence } : {}),
+        ...(sourceKind ? { sourceKind } : {}),
+        at: now.toISOString(),
+        ...(flipped ? { flip: true as const } : {}),
+      };
       const trimmedHistory = [newHistoryEntry, ...(prev.history ?? [])].slice(
         0,
         TOPIC_HISTORY_CAP,
@@ -964,16 +1123,17 @@ export async function upsertTopicBelief(
       const updated = await tx
         .update(ephemeroiTopicBeliefsTable)
         .set({
-          // Keep the original human-readable subject the first time we saw
-          // it — re-extractions produce slightly different casings that all
-          // map to the same key, but the first form is usually the cleanest.
-          stance,
-          confidence,
+          // Keep the original human-readable subject text — only the stance
+          // text is allowed to evolve, since "subject" is the topic identity
+          // and stance is the position taken on it.
+          stance: nextStance,
+          confidence: nextConfidence,
           evidenceCount: prev.evidenceCount + 1,
           lastEvidence: evidence,
           lastSourceKind: sourceKind,
           lastQuestion: question,
           history: trimmedHistory,
+          flipCount: prev.flipCount + (flipped ? 1 : 0),
           lastUpdatedAt: now,
         })
         .where(eq(ephemeroiTopicBeliefsTable.id, prev.id))
@@ -1006,6 +1166,165 @@ export async function listTopicBeliefs(limit = 100): Promise<TopicBeliefRow[]> {
   return rows.map(rowToTopicBelief);
 }
 
+/**
+ * Apply passive decay to all topic beliefs whose confidence has drifted
+ * out-of-date. For each row, confidence drifts toward neutral 0.5
+ * exponentially with the configured half-life, modulated by a multiplier
+ * (lets the cognitive field slow or speed up decay globally).
+ *
+ * We use `lastDriftAt` (or `lastUpdatedAt` if drift never ran) as the
+ * reference point. A reinforced row resets `lastUpdatedAt`, so the next
+ * decay tick measures from there rather than re-decaying for time the row
+ * was already being updated.
+ *
+ * Returns the number of rows touched, for logging.
+ */
+export async function applyTopicBeliefDecay(opts: {
+  now?: Date;
+  halfLifeMultiplier?: number;
+  /** Half-life override for tests; defaults to env-configured value. */
+  halfLifeMs?: number;
+} = {}): Promise<{ touched: number; decayed: number; skipped: number }> {
+  const now = opts.now ?? new Date();
+  const baseHalfLife = opts.halfLifeMs ?? DEFAULT_OPINION_HALF_LIFE_MS;
+  const mult = clamp(opts.halfLifeMultiplier ?? 1, 0.25, 4);
+  const halfLife = baseHalfLife * mult;
+
+  const rows = await db.select().from(ephemeroiTopicBeliefsTable);
+  let decayed = 0;
+  let skipped = 0;
+
+  for (const r of rows) {
+    // Reference time = max(lastUpdatedAt, lastDriftAt). Whichever is more
+    // recent is the right "elapsed since we last touched this" anchor.
+    const refTime = Math.max(
+      r.lastUpdatedAt.getTime(),
+      r.lastDriftAt ? r.lastDriftAt.getTime() : 0,
+    );
+    const elapsedMs = now.getTime() - refTime;
+    if (elapsedMs <= 0) {
+      skipped++;
+      continue;
+    }
+    // Exponential decay toward 0.5: distance halves every `halfLife` ms.
+    const halfLives = elapsedMs / halfLife;
+    if (halfLives < 0.05) {
+      // Less than 5% of a half-life — not worth a write.
+      skipped++;
+      continue;
+    }
+    const distance = r.confidence - 0.5;
+    const newDistance = distance * Math.pow(0.5, halfLives);
+    const newConfidence = clamp(0.5 + newDistance, 0, 1);
+    if (Math.abs(newConfidence - r.confidence) < 0.005) {
+      // Sub-percent change — would just be churn. Skip but advance the
+      // drift anchor so we don't re-evaluate the same delta next tick.
+      await db
+        .update(ephemeroiTopicBeliefsTable)
+        .set({ lastDriftAt: now })
+        .where(eq(ephemeroiTopicBeliefsTable.id, r.id));
+      skipped++;
+      continue;
+    }
+
+    const decayEntry = {
+      stance: r.stance,
+      confidence: newConfidence,
+      sourceKind: "decay",
+      at: now.toISOString(),
+      decay: true as const,
+    };
+    const trimmedHistory = [decayEntry, ...((r.history ?? []) as TopicBeliefRow["history"])].slice(
+      0,
+      TOPIC_HISTORY_CAP,
+    );
+
+    await db
+      .update(ephemeroiTopicBeliefsTable)
+      .set({
+        confidence: newConfidence,
+        history: trimmedHistory,
+        lastDriftAt: now,
+        // Intentionally NOT updating lastUpdatedAt — that's reserved for
+        // *evidence-driven* updates so the UI can sort by "most recently
+        // talked about" rather than "most recently decayed".
+      })
+      .where(eq(ephemeroiTopicBeliefsTable.id, r.id));
+    decayed++;
+  }
+
+  return { touched: rows.length, decayed, skipped };
+}
+
+/**
+ * Find existing topic beliefs whose subject substantially overlaps the
+ * given question text. Used by the Telegram answer pipeline to give the
+ * Don/Wife/Son persona awareness of its own prior positions on the
+ * subjects mentioned in the question.
+ *
+ * Two-pass match:
+ *   1. Tokenize the question (length ≥ 4, lowercased), then look up
+ *      candidate rows whose subject_key contains any of those tokens.
+ *      We only pull rows with confidence ≥ 0.55 — opinions weaker than
+ *      that aren't worth the persona's attention.
+ *   2. Re-rank in JS by recency (last 14 days favored) and confidence.
+ *
+ * Returns at most `limit` rows, freshest+strongest first. Empty array on
+ * any error or empty input — never throws.
+ */
+export async function findRelevantOpinionsForQuestion(
+  question: string,
+  limit = 3,
+): Promise<TopicBeliefRow[]> {
+  const tokens = Array.from(
+    new Set(
+      question
+        .toLowerCase()
+        .normalize("NFKD")
+        .replace(/[\u0300-\u036f]/g, "")
+        .split(/[^a-z0-9]+/)
+        .filter((t) => t.length >= 4),
+    ),
+  ).slice(0, 12);
+  if (tokens.length === 0) return [];
+
+  try {
+    // Pull all rows with confidence ≥ 0.55, then in-memory match. The
+    // table is small (we cap belief growth) and cross-row text search in
+    // Drizzle without trigram indexes is awkward; in-memory match keeps
+    // the code simple and stays correct as the matching heuristic evolves.
+    const rows = await db
+      .select()
+      .from(ephemeroiTopicBeliefsTable)
+      .where(gte(ephemeroiTopicBeliefsTable.confidence, 0.55))
+      .limit(500);
+    const now = Date.now();
+    const matches: Array<{ row: TopicBeliefRow; score: number }> = [];
+    for (const r of rows) {
+      const key = r.subjectKey.toLowerCase();
+      const subj = r.subject.toLowerCase();
+      let hit = false;
+      for (const t of tokens) {
+        if (key.includes(t) || subj.includes(t)) {
+          hit = true;
+          break;
+        }
+      }
+      if (!hit) continue;
+      // Recency bonus: full bonus within 1 day, fades to zero at 14 days.
+      const ageDays = (now - r.lastUpdatedAt.getTime()) / 86_400_000;
+      const recency = Math.max(0, 1 - ageDays / 14);
+      const score = r.confidence * (0.6 + 0.4 * recency);
+      matches.push({ row: rowToTopicBelief(r), score });
+    }
+    matches.sort((a, b) => b.score - a.score);
+    return matches.slice(0, limit).map((m) => m.row);
+  } catch (err) {
+    // Best effort — never let a stale opinion lookup break an answer.
+    return [];
+  }
+}
+
 function rowToTopicBelief(
   r: typeof ephemeroiTopicBeliefsTable.$inferSelect,
 ): TopicBeliefRow {
@@ -1020,6 +1339,8 @@ function rowToTopicBelief(
     lastSourceKind: r.lastSourceKind,
     lastQuestion: r.lastQuestion,
     history: (r.history ?? []) as TopicBeliefRow["history"],
+    flipCount: r.flipCount,
+    lastDriftAt: r.lastDriftAt,
     firstSeenAt: r.firstSeenAt,
     lastUpdatedAt: r.lastUpdatedAt,
   };

@@ -1,4 +1,7 @@
-import { useListEphemeroiTopicBeliefs } from "@workspace/api-client-react";
+import {
+  useListEphemeroiTopicBeliefs,
+  useGetEphemeroiCognitiveField,
+} from "@workspace/api-client-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
 import {
@@ -7,16 +10,28 @@ import {
   Brain,
   FileText,
   MessageSquare,
+  Repeat,
+  Waves,
 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+
+const MOOD_STYLES: Record<string, string> = {
+  settled: "text-emerald-400 border-emerald-400/30 bg-emerald-400/10",
+  contested: "text-rose-400 border-rose-400/30 bg-rose-400/10",
+  oscillating: "text-amber-400 border-amber-400/30 bg-amber-400/10",
+  neutral: "text-muted-foreground border-border/50 bg-muted/20",
+};
 
 export default function TopicBeliefs() {
   const { data, isLoading } = useListEphemeroiTopicBeliefs(
     { limit: 100 },
     { query: { refetchInterval: 15000 } },
   );
+  const { data: field } = useGetEphemeroiCognitiveField({
+    query: { refetchInterval: 15000 },
+  });
 
   if (isLoading) {
     return (
@@ -36,9 +51,25 @@ export default function TopicBeliefs() {
   return (
     <div className="max-w-5xl mx-auto space-y-10">
       <header>
-        <h2 className="font-serif text-3xl text-foreground mb-2">
-          Topic Beliefs
-        </h2>
+        <div className="flex items-start justify-between gap-4 mb-2 flex-wrap">
+          <h2 className="font-serif text-3xl text-foreground">
+            Topic Beliefs
+          </h2>
+          {field && (
+            <Badge
+              variant="outline"
+              className={`${MOOD_STYLES[field.mood] ?? MOOD_STYLES.neutral} flex items-center gap-1.5 font-mono text-[11px] uppercase tracking-wider`}
+              title={
+                field.snapshot
+                  ? `consensus ${(field.snapshot.consensusMean * 100).toFixed(0)}%, turbulence ${(field.snapshot.turbulence * 100).toFixed(0)}%, conflict ${(field.snapshot.conflict * 100).toFixed(0)}%, decay ×${field.decayMultiplier.toFixed(2)}`
+                  : "no biomimetic run yet"
+              }
+            >
+              <Waves className="w-3 h-3" />
+              field: {field.mood}
+            </Badge>
+          )}
+        </div>
         <p className="text-muted-foreground max-w-2xl">
           Stances I have formed autonomously from Telegram conversations and
           uploaded PDFs. Each one moves on its own as new exchanges arrive —
@@ -81,16 +112,28 @@ export default function TopicBeliefs() {
                           {b.subject}
                         </span>
                       </div>
-                      <Badge
-                        variant="outline"
-                        className={
-                          isStrong
-                            ? "text-emerald-400 border-emerald-400/30 bg-emerald-400/10"
-                            : "text-amber-400 border-amber-400/30 bg-amber-400/10"
-                        }
-                      >
-                        {isStrong ? "Strong" : "Forming"}
-                      </Badge>
+                      <div className="flex items-center gap-1.5 flex-shrink-0">
+                        {b.flipCount > 0 && (
+                          <Badge
+                            variant="outline"
+                            className="text-violet-300 border-violet-400/30 bg-violet-400/10 flex items-center gap-1"
+                            title={`Stance has flipped ${b.flipCount}× over time`}
+                          >
+                            <Repeat className="w-3 h-3" />
+                            {b.flipCount}
+                          </Badge>
+                        )}
+                        <Badge
+                          variant="outline"
+                          className={
+                            isStrong
+                              ? "text-emerald-400 border-emerald-400/30 bg-emerald-400/10"
+                              : "text-amber-400 border-amber-400/30 bg-amber-400/10"
+                          }
+                        >
+                          {isStrong ? "Strong" : "Forming"}
+                        </Badge>
+                      </div>
                     </div>
 
                     <p className="font-serif text-foreground mb-4 flex-1">

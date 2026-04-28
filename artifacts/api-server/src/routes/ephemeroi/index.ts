@@ -12,6 +12,7 @@ import {
   ListEphemeroiBeliefsResponse,
   ListEphemeroiTopicBeliefsResponse,
   ListEphemeroiTopicBeliefsQueryParams,
+  GetEphemeroiCognitiveFieldResponse,
   ListEphemeroiContradictionsResponse,
   ListEphemeroiReportsQueryParams,
   ListEphemeroiReportsResponse,
@@ -37,6 +38,11 @@ import {
   listRecentReports,
   type SourceKind,
 } from "./store";
+import {
+  getCognitiveField,
+  getCognitiveMood,
+  decayHalfLifeMultiplier,
+} from "./cognitiveField";
 import { parseRepoTarget, parseUserTarget } from "../../lib/github-client";
 import {
   observationToWire,
@@ -51,6 +57,7 @@ import {
 import { ephemeroiLoop, InFlightError } from "./loop";
 import { startTelegramAnswerLoop } from "./telegramAnswer";
 import { startConvergence } from "./convergence";
+import { startTopicBeliefDecayLoop } from "./topicBeliefDecayLoop";
 import { bus, type EphemeroiEvent } from "./bus";
 import { assertPublicHttpUrl } from "./guard";
 import { logger } from "../../lib/logger";
@@ -70,6 +77,10 @@ startTelegramAnswerLoop();
 // Metacog truth-anchor / exploration) now flow through this subscriber so
 // they pick up `[Origin · role]` badges + cross-limb merging.
 startConvergence();
+// Background passive-decay loop for autonomous topic beliefs. Drifts every
+// opinion toward neutral 0.5 with a half-life modulated by the cognitive
+// field (settled → slower decay, contested/oscillating → faster).
+startTopicBeliefDecayLoop();
 
 // ===== State (one-shot dashboard) =====
 
@@ -391,6 +402,35 @@ router.get("/ephemeroi/topic-beliefs", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /ephemeroi/topic-beliefs failed");
     res.status(500).json({ error: "Failed to list topic beliefs" });
+  }
+});
+
+router.get("/ephemeroi/cognitive-field", async (_req, res) => {
+  // Public read of the in-process cognitive field snapshot. No DB I/O —
+  // this is just exposing the most recent biomimetic-run summary so the
+  // dashboard can display the substrate state alongside the opinions
+  // that depend on it. Returns a stable shape even when no run has
+  // happened yet (mood "neutral", multiplier 1.0, snapshot null).
+  try {
+    const snap = getCognitiveField();
+    res.json(
+      GetEphemeroiCognitiveFieldResponse.parse({
+        mood: getCognitiveMood(),
+        decayMultiplier: decayHalfLifeMultiplier(),
+        snapshot: snap
+          ? {
+              consensusMean: snap.consensusMean,
+              turbulence: snap.turbulence,
+              conflict: snap.conflict,
+              solved: snap.solved,
+              capturedAt: snap.capturedAt.toISOString(),
+            }
+          : null,
+      }),
+    );
+  } catch (err) {
+    logger.error({ err }, "GET /ephemeroi/cognitive-field failed");
+    res.status(500).json({ error: "Failed to read cognitive field" });
   }
 });
 

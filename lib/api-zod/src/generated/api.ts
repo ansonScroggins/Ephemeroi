@@ -768,6 +768,11 @@ export const ListEphemeroiTopicBeliefsResponse = zod.object({
         .describe(
           "Number of distinct exchanges that have written to this belief.",
         ),
+      flipCount: zod
+        .number()
+        .describe(
+          "Number of times this opinion has flipped to the opposite stance over its lifetime. A high count means the bot is oscillating on this subject.",
+        ),
       lastEvidence: zod.string().nullish(),
       lastSourceKind: zod
         .string()
@@ -798,6 +803,61 @@ export const ListEphemeroiTopicBeliefsResponse = zod.object({
     }),
   ),
 });
+
+/**
+ * Latest snapshot from the biomimetic constraint-field solver, exposed
+as the unified cognitive substrate that ties opinion dynamics and
+the Don/Wife/Son persona together. `mood` is a coarse label
+("settled" | "contested" | "oscillating" | "neutral") derived from
+the underlying field metrics; downstream consumers (UI badge,
+decay-rate modulator, persona tonal directive) all switch on it.
+Returns null fields when no biomimetic run has happened yet —
+callers should treat that as "neutral".
+
+ * @summary Current cognitive-field snapshot from the biomimetic substrate
+ */
+export const getEphemeroiCognitiveFieldResponseSnapshotConsensusMeanMin = 0;
+export const getEphemeroiCognitiveFieldResponseSnapshotConsensusMeanMax = 1;
+
+export const getEphemeroiCognitiveFieldResponseSnapshotTurbulenceMin = 0;
+export const getEphemeroiCognitiveFieldResponseSnapshotTurbulenceMax = 1;
+
+export const getEphemeroiCognitiveFieldResponseSnapshotConflictMin = 0;
+export const getEphemeroiCognitiveFieldResponseSnapshotConflictMax = 1;
+
+export const GetEphemeroiCognitiveFieldResponse = zod
+  .object({
+    mood: zod
+      .enum(["settled", "contested", "oscillating", "neutral"])
+      .describe("Coarse mood label derived from the field metrics."),
+    decayMultiplier: zod
+      .number()
+      .describe(
+        "Multiplier applied to the opinion-decay half-life. >1 = opinions stick longer; <1 = opinions move faster.",
+      ),
+    snapshot: zod
+      .object({
+        consensusMean: zod
+          .number()
+          .min(getEphemeroiCognitiveFieldResponseSnapshotConsensusMeanMin)
+          .max(getEphemeroiCognitiveFieldResponseSnapshotConsensusMeanMax),
+        turbulence: zod
+          .number()
+          .min(getEphemeroiCognitiveFieldResponseSnapshotTurbulenceMin)
+          .max(getEphemeroiCognitiveFieldResponseSnapshotTurbulenceMax),
+        conflict: zod
+          .number()
+          .min(getEphemeroiCognitiveFieldResponseSnapshotConflictMin)
+          .max(getEphemeroiCognitiveFieldResponseSnapshotConflictMax)
+          .describe("Cage-event intensity, scaled to [0, 1]."),
+        solved: zod.boolean(),
+        capturedAt: zod.coerce.date(),
+      })
+      .nullable(),
+  })
+  .describe(
+    'Snapshot of the unified cognitive field. `snapshot` is null when no\nbiomimetic run has happened yet — `mood` will be \"neutral\" in that\ncase and `decayMultiplier` will be 1.0.\n',
+  );
 
 /**
  * Bridge endpoint used by Metacog (and other consumers) to ask Ephemeroi

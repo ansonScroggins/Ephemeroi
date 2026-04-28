@@ -220,6 +220,12 @@ export interface TopicBeliefWire {
   stance: string;
   confidence: number;
   evidenceCount: number;
+  /**
+   * Number of times this opinion has flipped to the opposite stance over
+   * its lifetime. Surfaced because oscillating beliefs are interesting on
+   * their own — the UI shows a small flip badge.
+   */
+  flipCount: number;
   lastEvidence: string | null;
   lastSourceKind: string | null;
   history: TopicBeliefHistoryWire[];
@@ -246,6 +252,7 @@ export function topicBeliefToWire(b: TopicBeliefRow): TopicBeliefWire {
     stance: b.stance,
     confidence: b.confidence,
     evidenceCount: b.evidenceCount,
+    flipCount: b.flipCount,
     lastEvidence: b.lastEvidence,
     lastSourceKind: b.lastSourceKind,
     history: b.history.map((h) => ({
