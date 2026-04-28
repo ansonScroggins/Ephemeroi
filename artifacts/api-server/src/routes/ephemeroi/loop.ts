@@ -110,7 +110,7 @@ class EphemeroiLoop {
     } catch (err) {
       logger.warn({ err }, "Ephemeroi loop: failed to read settings");
     }
-    const delay = Math.max(1_000, Math.min(intervalSeconds * 1000, 60_000)); if (delay < 1000) { logger.warn('Delay is less than 1000ms, adjusting to 1000ms'); }
+    const delay = Math.max(1_000, Math.min(intervalSeconds * 1000, 60_000));
     this.nextCycleAt = new Date(Date.now() + delay);
     this.timer = setTimeout(() => {
       void this.tick();
