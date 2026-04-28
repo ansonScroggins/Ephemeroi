@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Metacognitive AI Search"
+version = "1.0.0"
+id = "artifacts/metacognitive-search"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 24711
+
+[services.development]
+run = "pnpm --filter @workspace/metacognitive-search run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/metacognitive-search", "run", "build" ]
+publicDir = "artifacts/metacognitive-search/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "24711"
+BASE_PATH = "/"

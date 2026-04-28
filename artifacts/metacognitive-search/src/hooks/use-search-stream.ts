@@ -1,0 +1,340 @@
+import { useState, useCallback, useRef } from "react";
+
+export type SearchMode = "research" | "code" | "web" | "society" | "verify" | "explore";
+
+// Shared cross-site signal envelope (mirrors the OpenAPI SignalEnvelope schema).
+export interface SignalEnvelope {
+  origin: "metacog" | "ephemeroi";
+  role: "structural" | "truth-anchor" | "exploration";
+  severity: number;
+  headline: string;
+  body: string;
+  subject?: string;
+  evidence?: Record<string, unknown>;
+}
+
+export interface DataverseHit {
+  title: string;
+  citation: string;
+  url: string;
+  abstract: string;
+}
+
+export interface TruthAnchorPayload {
+  query: string;
+  hits: DataverseHit[];
+  signal: SignalEnvelope | null;
+  degraded: boolean;
+  notes: string;
+}
+
+export interface ExplorationPayload {
+  query: string;
+  api: { id: string; description: string; url: string; match: number } | null;
+  summary: string;
+  raw: Record<string, unknown> | null;
+  signal: SignalEnvelope | null;
+  degraded: boolean;
+  notes: string;
+}
+
+export interface DecomposePayload {
+  subQuestions: string[];
+  rationale: string;
+  strategy: 'breadth_first' | 'depth_first' | 'comparative';
+}
+
+export type ReasoningLens = 'VISIBLE' | 'INFRARED' | 'UV' | 'PRISM';
+
+export interface RetrievePayload {
+  subQuestion: string;
+  sourceType: 'empirical' | 'theoretical' | 'computational' | 'clinical' | 'review';
+  findings: string;
+  confidence: number;
+  references: string[];
+  lens?: ReasoningLens;
+  lensRationale?: string;
+}
+
+export interface EvaluatePayload {
+  coverageAssessment: string;
+  overallConfidence: number;
+  gaps: string[];
+  conflictDetected: boolean;
+  conflictDescription: string | null;
+}
+
+export interface PivotPayload {
+  trigger: string;
+  oldDirection: string;
+  newDirection: string;
+  rationale: string;
+}
+
+export interface SynthesizePayload {
+  answer: string;
+  finalConfidence: number;
+  keyFindings: string[];
+  openQuestions: string[];
+  furtherReading: string[];
+}
+
+export interface WebSource {
+  index: number;
+  title: string;
+  url: string;
+  snippet: string;
+}
+
+export interface WebSearchPayload {
+  query: string;
+  sources: WebSource[];
+  totalSources: number;
+  status?: 'searching';
+}
+
+export interface DetectedPattern {
+  theme: string;
+  frequency: number;
+  supportingSources: number[];
+}
+
+export interface PatternPayload {
+  patterns: DetectedPattern[];
+  dominantThemes: string[];
+  outliers: string[];
+}
+
+export interface ReflectPayload {
+  personalSummary: string;
+  interestingObservations: string[];
+  autonomousExplorations: string[];
+  selfAssessment: string;
+}
+
+export type StepData =
+  | { stepType: 'DECOMPOSE'; data: DecomposePayload }
+  | { stepType: 'RETRIEVE'; data: RetrievePayload }
+  | { stepType: 'EVALUATE'; data: EvaluatePayload }
+  | { stepType: 'PIVOT'; data: PivotPayload }
+  | { stepType: 'SYNTHESIZE'; data: SynthesizePayload }
+  | { stepType: 'WEB_SEARCH'; data: WebSearchPayload }
+  | { stepType: 'PATTERN'; data: PatternPayload }
+  | { stepType: 'REFLECT'; data: ReflectPayload }
+  | { stepType: 'TRUTH_ANCHOR'; data: TruthAnchorPayload }
+  | { stepType: 'EXPLORATION'; data: ExplorationPayload };
+
+export type StreamEvent =
+  | { type: 'started'; query: string; provider?: string; model?: string }
+  | { type: 'token'; content: string }
+  | ({ type: 'step' } & StepData)
+  | { type: 'complete'; totalSteps: number; rawResponse: string }
+  | { type: 'error'; message: string };
+
+export interface StartSearchOptions {
+  query: string;
+  mode?: SearchMode;
+  code?: string;
+}
+
+export function useSearchStream() {
+  const [isRunning, setIsRunning] = useState(false);
+  const [query, setQuery] = useState("");
+  const [events, setEvents] = useState<StreamEvent[]>([]);
+  const [liveTokenStream, setLiveTokenStream] = useState("");
+  const [activeStepType, setActiveStepType] = useState<string | null>(null);
+  const [provider, setProvider] = useState<string | null>(null);
+  const [model, setModel] = useState<string | null>(null);
+
+  const activeAbortController = useRef<AbortController | null>(null);
+
+  const startSearch = useCallback(async (opts: StartSearchOptions) => {
+    if (activeAbortController.current) {
+      activeAbortController.current.abort();
+    }
+
+    setQuery(opts.query);
+    setEvents([]);
+    setLiveTokenStream("");
+    setIsRunning(true);
+    setActiveStepType(null);
+    setProvider(null);
+    setModel(null);
+
+    const abortController = new AbortController();
+    activeAbortController.current = abortController;
+
+    // Verify (Dataverse) and Explore (public-API catalog) are plain JSON
+    // request/response — not SSE. We push a single synthetic step event so
+    // the existing chat feed renders them with their own bubble types.
+    if (opts.mode === "verify" || opts.mode === "explore") {
+      const endpoint = opts.mode === "verify" ? "/api/search/truth-anchor" : "/api/search/exploration";
+      const stepType = opts.mode === "verify" ? "TRUTH_ANCHOR" : "EXPLORATION";
+      const placeholderEvent: StreamEvent = { type: "started", query: opts.query };
+      setEvents([placeholderEvent]);
+      setActiveStepType(stepType);
+      try {
+        const resp = await fetch(endpoint, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ query: opts.query }),
+          signal: abortController.signal,
+        });
+        if (!resp.ok) {
+          const text = await resp.text().catch(() => "Unknown error");
+          setEvents(prev => [...prev, { type: "error", message: `Request failed (${resp.status}): ${text}` }]);
+          setIsRunning(false);
+          setActiveStepType(null);
+          return;
+        }
+        const raw: unknown = await resp.json();
+        if (typeof raw !== "object" || raw === null) {
+          throw new Error("Malformed response payload");
+        }
+        const stepEvent = (
+          opts.mode === "verify"
+            ? { type: "step", stepType: "TRUTH_ANCHOR", data: raw as TruthAnchorPayload }
+            : { type: "step", stepType: "EXPLORATION", data: raw as ExplorationPayload }
+        ) as StreamEvent;
+        setEvents(prev => [...prev, stepEvent, { type: "complete", totalSteps: 1, rawResponse: "" }]);
+      } catch (err: unknown) {
+        if (err instanceof Error && err.name === "AbortError") {
+          // user cancellation
+        } else {
+          const message = err instanceof Error ? err.message : "Request failed";
+          setEvents(prev => [...prev, { type: "error", message }]);
+        }
+      } finally {
+        setIsRunning(false);
+        setActiveStepType(null);
+      }
+      return;
+    }
+
+    try {
+      const body: Record<string, unknown> = { query: opts.query, mode: opts.mode ?? "research" };
+      if (opts.mode === "code" && opts.code) body['code'] = opts.code;
+
+      const response = await fetch('/api/search/metacognitive', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: abortController.signal
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => "Unknown error");
+        const message = `Request failed (${response.status}): ${errorText}`;
+        setEvents(prev => [...prev, { type: 'error', message }]);
+        setIsRunning(false);
+        return;
+      }
+
+      if (!response.body) {
+        throw new Error("No response body");
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+
+        if (done) {
+          setIsRunning(false);
+          setActiveStepType(null);
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const eventStr = line.slice(6).trim();
+              if (!eventStr) continue;
+
+              const raw: unknown = JSON.parse(eventStr);
+              if (typeof raw !== 'object' || raw === null) continue;
+              const event = raw as Record<string, unknown>;
+
+              if (event['done'] === true) {
+                setIsRunning(false);
+                setActiveStepType(null);
+                continue;
+              }
+
+              if (event['type'] === 'started' && typeof event['query'] === 'string') {
+                const startedProvider = typeof event['provider'] === 'string' ? event['provider'] : undefined;
+                const startedModel = typeof event['model'] === 'string' ? event['model'] : undefined;
+                setEvents([{ type: 'started', query: event['query'], provider: startedProvider, model: startedModel }]);
+                if (startedProvider) setProvider(startedProvider);
+                if (startedModel) setModel(startedModel);
+              } else if (event['type'] === 'token' && typeof event['content'] === 'string') {
+                setLiveTokenStream(prev => prev + (event['content'] as string));
+              } else if (event['type'] === 'step') {
+                const stepEvent = event as { type: 'step'; stepType: string; data: unknown };
+                // Skip the placeholder "searching" WEB_SEARCH event from being added to history
+                // (it's just to flip the active indicator). The real one with sources replaces it.
+                const isSearchingPlaceholder =
+                  stepEvent.stepType === 'WEB_SEARCH' &&
+                  (stepEvent.data as { status?: string })?.status === 'searching';
+                if (!isSearchingPlaceholder) {
+                  setEvents(prev => [...prev, stepEvent as StreamEvent]);
+                }
+                if (typeof stepEvent.stepType === 'string') {
+                  setActiveStepType(stepEvent.stepType);
+                }
+                setLiveTokenStream("");
+              } else if (event['type'] === 'complete') {
+                const completeEvent = event as { type: 'complete'; totalSteps: number; rawResponse: string };
+                setEvents(prev => [...prev, completeEvent]);
+                setIsRunning(false);
+                setActiveStepType(null);
+              } else if (event['type'] === 'error' && typeof event['message'] === 'string') {
+                setEvents(prev => [...prev, { type: 'error', message: event['message'] as string }]);
+                setIsRunning(false);
+                setActiveStepType(null);
+              }
+            } catch (parseErr) {
+              console.error("Failed to parse SSE event", parseErr);
+            }
+          }
+        }
+      }
+    } catch (err: unknown) {
+      if (err instanceof Error && err.name === 'AbortError') {
+        // User-initiated cancellation — no error state needed
+      } else {
+        const message = err instanceof Error ? err.message : "An unexpected error occurred";
+        setEvents(prev => [...prev, { type: 'error', message }]);
+        setIsRunning(false);
+        setActiveStepType(null);
+      }
+    }
+  }, []);
+
+  const stopSearch = useCallback(() => {
+    if (activeAbortController.current) {
+      activeAbortController.current.abort();
+      activeAbortController.current = null;
+    }
+    setIsRunning(false);
+    setActiveStepType(null);
+  }, []);
+
+  return {
+    startSearch,
+    stopSearch,
+    isRunning,
+    query,
+    events,
+    liveTokenStream,
+    activeStepType,
+    provider,
+    model,
+  };
+}

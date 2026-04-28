@@ -1,0 +1,1659 @@
+openapi: 3.1.0
+info:
+  # Do not change the title, if the title changes, the import paths will be broken
+  title: Api
+  version: 0.1.0
+  description: API specification
+servers:
+  - url: /api
+    description: Base API path
+tags:
+  - name: health
+    description: Health operations
+  - name: search
+    description: Metacognitive AI search operations
+  - name: ephemeroi
+    description: Autonomous explorer (sources, observations, beliefs, contradictions, reports)
+paths:
+  /healthz:
+    get:
+      operationId: healthCheck
+      tags: [health]
+      summary: Health check
+      description: Returns server health status
+      responses:
+        "200":
+          description: Healthy
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/HealthStatus"
+  /search/metacognitive:
+    post:
+      operationId: metacognitiveSearch
+      tags: [search]
+      summary: Run a metacognitive search
+      description: |
+        Accepts a research query (plus optional `code` and `mode`) and streams back
+        structured metacognitive reasoning steps as Server-Sent Events (SSE). Each event
+        is a JSON object on a `data:` line.
+
+        Mode-dependent step ordering:
+        - `research` (default): `started` → `token`* → `step`(DECOMPOSE → RETRIEVE+ → EVALUATE → PIVOT? → SYNTHESIZE) → `complete` → `{"done":true}`
+        - `code`: same step order as research, applied to code review; the SYNTHESIZE
+          `answer` field contains a fenced code block with the refactored code.
+        - `web`: backend first emits `step`(WEB_SEARCH) with real sources fetched via
+          OpenAI Responses API web_search, then `step`(DECOMPOSE → PATTERN → RETRIEVE+ →
+          EVALUATE → PIVOT? → SYNTHESIZE).
+
+        **SSE consumption note**: This endpoint uses `text/event-stream` and must be
+        consumed with `fetch` + a `ReadableStream` reader (or `EventSource`). The
+        generated OpenAI-style client stubs are not suitable for this endpoint because they
+        model the response as a single resolved JSON value. Use the `use-search-stream`
+        hook (or equivalent manual `fetch` streaming) to consume this endpoint.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MetacognitiveSearchRequest"
+      responses:
+        "200":
+          description: SSE stream of metacognitive reasoning events
+          content:
+            text/event-stream:
+              schema:
+                $ref: "#/components/schemas/MetacognitiveSearchSseEvent"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /search/sample-queries:
+    get:
+      operationId: getSampleQueries
+      tags: [search]
+      summary: Get sample research queries
+      description: Returns a list of sample research questions to demonstrate the metacognitive search system
+      responses:
+        "200":
+          description: List of sample queries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SampleQueriesResponse"
+  /search/truth-anchor:
+    post:
+      operationId: searchTruthAnchor
+      tags: [search]
+      summary: Verify a factual question against Harvard Dataverse
+      description: |
+        Hits the Harvard Dataverse public search API and returns matching dataset
+        citations. When hits are found, the response also carries a structured
+        `signal` envelope (shared with Ephemeroi via the convergence layer) so
+        high-confidence verifications can flow to the unified Telegram stream.
+        Degrades gracefully: if Dataverse is unreachable, `degraded=true` and
+        `hits=[]` are returned with a human-readable note instead of a 5xx.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TruthAnchorRequest"
+      responses:
+        "200":
+          description: Truth-anchor result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/TruthAnchorResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /search/exploration:
+    post:
+      operationId: searchExploration
+      tags: [search]
+      summary: Pick a free public API from the catalog and call it
+      description: |
+        Matches the user's query against a curated catalog of free, keyless
+        public APIs (Wikipedia, Open-Meteo weather, REST Countries, Open Library,
+        USGS earthquakes, CoinGecko prices, ISS position), calls the highest-
+        scoring entry, validates the response against the entry's declared zod
+        schema, and returns a normalised summary. Each call is bounded by a
+        per-API rolling-minute budget. Notable findings emit a structured
+        `signal` envelope (shared with Ephemeroi via the convergence layer).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ExplorationRequest"
+      responses:
+        "200":
+          description: Exploration result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ExplorationResponse"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  # ===== Ephemeroi: autonomous explorer =====
+  /ephemeroi/state:
+    get:
+      operationId: getEphemeroiState
+      tags: [ephemeroi]
+      summary: Snapshot of the explorer
+      description: One-shot dashboard payload — settings, source counts, recent observations/reports/beliefs/contradictions, and loop status.
+      responses:
+        "200":
+          description: Snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiState"
+  /ephemeroi/settings:
+    get:
+      operationId: getEphemeroiSettings
+      tags: [ephemeroi]
+      summary: Get explorer settings
+      responses:
+        "200":
+          description: Current settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSettings"
+    put:
+      operationId: updateEphemeroiSettings
+      tags: [ephemeroi]
+      summary: Update explorer settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EphemeroiSettingsUpdate"
+      responses:
+        "200":
+          description: Updated settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSettings"
+  /ephemeroi/sources:
+    get:
+      operationId: listEphemeroiSources
+      tags: [ephemeroi]
+      summary: List configured sources (feeds, urls, search topics)
+      responses:
+        "200":
+          description: All sources
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSourcesResponse"
+    post:
+      operationId: createEphemeroiSource
+      tags: [ephemeroi]
+      summary: Add a new source
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EphemeroiSourceCreate"
+      responses:
+        "201":
+          description: Created source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSource"
+        "400":
+          description: Bad request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/sources/{id}:
+    delete:
+      operationId: deleteEphemeroiSource
+      tags: [ephemeroi]
+      summary: Remove a source
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/source-states:
+    get:
+      operationId: listEphemeroiSourceStates
+      tags: [ephemeroi]
+      summary: List per-source 4D state vectors (Capability/Integrity/Usability/Trust)
+      description: |
+        Returns one state row per source that has had at least one
+        observation reflected upon, including the most recent delta
+        applied and a short insight extracted from that event. Sources
+        that have never been reflected on are omitted.
+      responses:
+        "200":
+          description: All source states
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSourceStatesResponse"
+  /ephemeroi/observations:
+    get:
+      operationId: listEphemeroiObservations
+      tags: [ephemeroi]
+      summary: List recent observations
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Recent observations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiObservationsResponse"
+  /ephemeroi/beliefs:
+    get:
+      operationId: listEphemeroiBeliefs
+      tags: [ephemeroi]
+      summary: List current beliefs
+      responses:
+        "200":
+          description: Current beliefs
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiBeliefsResponse"
+  /ephemeroi/topic-beliefs:
+    get:
+      operationId: listEphemeroiTopicBeliefs
+      tags: [ephemeroi]
+      summary: List autonomous topic beliefs (Q&A / PDF-driven)
+      description: |
+        Opinionated stances Ephemeroi has formed about specific named subjects
+        as a side effect of Telegram Q&A and PDF reads. Distinct from
+        `/ephemeroi/beliefs`, which is the source-anchored loop output.
+        Each row carries the current stance/confidence plus a capped history
+        of how it has moved over time.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+            default: 100
+      responses:
+        "200":
+          description: Current topic beliefs, most recently updated first
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiTopicBeliefsResponse"
+  /ephemeroi/cognitive-field:
+    get:
+      operationId: getEphemeroiCognitiveField
+      tags: [ephemeroi]
+      summary: Current cognitive-field snapshot from the biomimetic substrate
+      description: |
+        Latest snapshot from the biomimetic constraint-field solver, exposed
+        as the unified cognitive substrate that ties opinion dynamics and
+        the Don/Wife/Son persona together. `mood` is a coarse label
+        ("settled" | "contested" | "oscillating" | "neutral") derived from
+        the underlying field metrics; downstream consumers (UI badge,
+        decay-rate modulator, persona tonal directive) all switch on it.
+        Returns null fields when no biomimetic run has happened yet —
+        callers should treat that as "neutral".
+      responses:
+        "200":
+          description: Current cognitive field, with null snapshot if not yet computed.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiCognitiveFieldResponse"
+  /ephemeroi/beliefs/by-source:
+    get:
+      operationId: listEphemeroiBeliefsBySource
+      tags: [ephemeroi]
+      summary: Beliefs and contradictions tied to a specific watched source
+      description: |
+        Bridge endpoint used by Metacog (and other consumers) to ask Ephemeroi
+        what it currently believes about a single source — most usefully, a
+        github repo it is watching. Returns beliefs whose `originSourceId`
+        points at the source, plus contradictions tied to those beliefs or to
+        observations from that source.
+      parameters:
+        - name: kind
+          in: query
+          required: true
+          schema:
+            $ref: "#/components/schemas/EphemeroiSourceKind"
+        - name: target
+          in: query
+          required: true
+          schema:
+            type: string
+          description: For github, "owner/repo" or a github.com URL (canonicalized server-side). For github_user, the username or org name.
+      responses:
+        "200":
+          description: Beliefs and contradictions linked to the source
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiBeliefsBySourceResponse"
+        "400":
+          description: Invalid kind or target
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/contradictions:
+    get:
+      operationId: listEphemeroiContradictions
+      tags: [ephemeroi]
+      summary: List unresolved contradictions
+      responses:
+        "200":
+          description: Contradictions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiContradictionsResponse"
+  /ephemeroi/reports:
+    get:
+      operationId: listEphemeroiReports
+      tags: [ephemeroi]
+      summary: List recent reports (only those past the importance threshold)
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            default: 50
+            minimum: 1
+            maximum: 500
+      responses:
+        "200":
+          description: Recent reports
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiReportsResponse"
+  /ephemeroi/cycle/run:
+    post:
+      operationId: runEphemeroiCycle
+      tags: [ephemeroi]
+      summary: Trigger one explorer cycle right now
+      description: Forces an immediate fetch + reflect + report cycle outside the normal schedule.
+      responses:
+        "200":
+          description: Cycle summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiCycleResult"
+        "409":
+          description: Cycle already in flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/biomimetic:
+    post:
+      operationId: runEphemeroiBiomimetic
+      tags: [ephemeroi]
+      summary: Run one pass of the v0.11.3 Biomimetic constraint-field protocol
+      description: |
+        Generates a small synthetic 3-SAT problem at the phase-transition
+        ratio and runs the biomimetic protocol against it: spliceosome step
+        (flip introns / stabilize exons), pressure flow, Cyrus Edict on
+        cage detection, and invariant enforcement. Telemetry events flow
+        to the SSE bus as `constellation_alert` events; on cage detection
+        a Don/Wife/Son narration is generated and the run summary is sent
+        to Telegram (if configured).
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EphemeroiBiomimeticOptions"
+      responses:
+        "200":
+          description: Result of the protocol run.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiBiomimeticResult"
+
+  /ephemeroi/signal:
+    post:
+      operationId: postEphemeroiSignal
+      tags: [ephemeroi]
+      summary: Inbound cross-site signal envelope
+      description: |
+        Accepts a `SignalEnvelope` POSTed from another site (currently Metacog
+        when it runs out of process). The envelope is validated and re-published
+        on the in-process signal bus, so the unified Telegram convergence
+        layer routes it identically to in-process signals — picking up the
+        `[Origin · role]` badge and participating in cross-limb merge/correlation.
+
+        **Auth.** Requires the `x-ephemeroi-signal-secret` header to match the
+        `EPHEMEROI_SIGNAL_SECRET` env var. If the env var is unset the endpoint
+        returns 503 — same-process Metacog adapters publish directly to the
+        bus, so no inbound HTTP is needed in the default deployment.
+      parameters:
+        - name: x-ephemeroi-signal-secret
+          in: header
+          required: true
+          schema:
+            type: string
+          description: Shared secret matched against `EPHEMEROI_SIGNAL_SECRET`.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SignalEnvelope"
+      responses:
+        "202":
+          description: Envelope accepted; the convergence layer will deliver.
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSignalAccepted"
+        "400":
+          description: Invalid envelope
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "401":
+          description: Missing or invalid shared secret
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Inbound endpoint disabled (set EPHEMEROI_SIGNAL_SECRET to enable).
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /ephemeroi/self-improve:
+    post:
+      operationId: runEphemeroiSelfImprovement
+      tags: [ephemeroi]
+      summary: Have Ephemeroi propose and apply one self-improvement to its own source
+      description: |
+        Reads the bot's whitelisted route files, asks the LLM for one focused
+        substantive patch (bug fix, missed edge case, clarity win), applies it,
+        re-runs the bundler to verify it compiles, then pings Telegram with the
+        rationale. If the patched code fails to build, the original is restored.
+        The new code only takes effect on the next api-server process restart.
+      responses:
+        "200":
+          description: Self-improvement attempt result (success or graceful failure)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSelfImprovementResult"
+        "409":
+          description: A self-improvement is already in flight
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+components:
+  schemas:
+    HealthStatus:
+      type: object
+      properties:
+        status:
+          type: string
+      required:
+        - status
+
+    MetacognitiveSearchRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          description: The research question, or for code mode, a brief description of what the code does or what to focus on
+        mode:
+          type: string
+          enum: [research, code, web]
+          default: research
+          description: |
+            Search mode:
+            - `research` — LLM-simulated metacognitive research (default)
+            - `code` — paste code, get a metacognitive code review with refactored output
+            - `web` — real web search with cross-source pattern detection
+        code:
+          type: string
+          description: Source code to review (required when mode=code)
+        maxDepth:
+          type: integer
+          description: Maximum number of retrieval iterations (capped at 5)
+          default: 5
+      required:
+        - query
+
+    # --- SSE event union ---
+    MetacognitiveSearchSseEvent:
+      oneOf:
+        - $ref: "#/components/schemas/SseStartedEvent"
+        - $ref: "#/components/schemas/SseTokenEvent"
+        - $ref: "#/components/schemas/SseStepEvent"
+        - $ref: "#/components/schemas/SseCompleteEvent"
+        - $ref: "#/components/schemas/SseErrorEvent"
+      discriminator:
+        propertyName: type
+
+    SseStartedEvent:
+      type: object
+      description: Emitted once when the stream begins
+      properties:
+        type:
+          type: string
+          enum: [started]
+        query:
+          type: string
+      required: [type, query]
+
+    SseTokenEvent:
+      type: object
+      description: Emitted for each streaming token from the LLM (live typing feed)
+      properties:
+        type:
+          type: string
+          enum: [token]
+        content:
+          type: string
+      required: [type, content]
+
+    SseStepEvent:
+      type: object
+      description: Emitted when a complete reasoning step is parsed from the stream
+      properties:
+        type:
+          type: string
+          enum: [step]
+        stepType:
+          type: string
+          enum: [DECOMPOSE, RETRIEVE, EVALUATE, PIVOT, SYNTHESIZE, WEB_SEARCH, PATTERN, REFLECT]
+        data:
+          oneOf:
+            - $ref: "#/components/schemas/DecomposeStepData"
+            - $ref: "#/components/schemas/RetrieveStepData"
+            - $ref: "#/components/schemas/EvaluateStepData"
+            - $ref: "#/components/schemas/PivotStepData"
+            - $ref: "#/components/schemas/SynthesizeStepData"
+            - $ref: "#/components/schemas/WebSearchStepData"
+            - $ref: "#/components/schemas/PatternStepData"
+            - $ref: "#/components/schemas/ReflectStepData"
+      required: [type, stepType, data]
+
+    SseCompleteEvent:
+      type: object
+      description: Emitted after all steps have been streamed
+      properties:
+        type:
+          type: string
+          enum: [complete]
+        totalSteps:
+          type: integer
+        rawResponse:
+          type: string
+      required: [type, totalSteps, rawResponse]
+
+    SseErrorEvent:
+      type: object
+      description: Emitted if the LLM or server encounters an error mid-stream
+      properties:
+        type:
+          type: string
+          enum: [error]
+        message:
+          type: string
+      required: [type, message]
+
+    # --- Step data payloads ---
+    DecomposeStepData:
+      type: object
+      description: Query decomposition into focused sub-questions
+      properties:
+        subQuestions:
+          type: array
+          items:
+            type: string
+        rationale:
+          type: string
+        strategy:
+          type: string
+          enum: [breadth_first, depth_first, comparative]
+      required: [subQuestions, rationale, strategy]
+
+    RetrieveStepData:
+      type: object
+      description: Simulated knowledge retrieval for a single sub-question
+      properties:
+        subQuestion:
+          type: string
+        sourceType:
+          type: string
+          enum: [empirical, theoretical, computational, clinical, review]
+        findings:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        references:
+          type: array
+          items:
+            type: string
+      required: [subQuestion, sourceType, findings, confidence, references]
+
+    EvaluateStepData:
+      type: object
+      description: Coverage evaluation and gap detection across retrieved knowledge
+      properties:
+        coverageAssessment:
+          type: string
+        overallConfidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        gaps:
+          type: array
+          items:
+            type: string
+        conflictDetected:
+          type: boolean
+        conflictDescription:
+          type: string
+          nullable: true
+      required: [coverageAssessment, overallConfidence, gaps, conflictDetected]
+
+    PivotStepData:
+      type: object
+      description: Strategy pivot when gaps or conflicts require a new search direction
+      properties:
+        trigger:
+          type: string
+        oldDirection:
+          type: string
+        newDirection:
+          type: string
+        rationale:
+          type: string
+      required: [trigger, oldDirection, newDirection, rationale]
+
+    SynthesizeStepData:
+      type: object
+      description: Final synthesis of all retrieved knowledge into a comprehensive answer
+      properties:
+        answer:
+          type: string
+        finalConfidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        keyFindings:
+          type: array
+          items:
+            type: string
+        openQuestions:
+          type: array
+          items:
+            type: string
+        furtherReading:
+          type: array
+          items:
+            type: string
+      required: [answer, finalConfidence, keyFindings, openQuestions, furtherReading]
+
+    WebSearchStepData:
+      type: object
+      description: Real web search results retrieved before the metacognitive flow runs (web mode only)
+      properties:
+        query:
+          type: string
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/WebSource"
+        totalSources:
+          type: integer
+      required: [query, sources, totalSources]
+
+    WebSource:
+      type: object
+      properties:
+        index:
+          type: integer
+          description: 1-based source index used for cross-references
+        title:
+          type: string
+        url:
+          type: string
+        snippet:
+          type: string
+      required: [index, title, url, snippet]
+
+    PatternStepData:
+      type: object
+      description: Cross-source pattern recognition over real web results (web mode only)
+      properties:
+        patterns:
+          type: array
+          items:
+            $ref: "#/components/schemas/DetectedPattern"
+        dominantThemes:
+          type: array
+          items:
+            type: string
+        outliers:
+          type: array
+          items:
+            type: string
+      required: [patterns, dominantThemes, outliers]
+
+    DetectedPattern:
+      type: object
+      properties:
+        theme:
+          type: string
+        frequency:
+          type: integer
+          description: Number of sources in which this theme appears
+        supportingSources:
+          type: array
+          description: 1-based source indices that support this pattern
+          items:
+            type: integer
+      required: [theme, frequency, supportingSources]
+
+    ReflectStepData:
+      type: object
+      description: Autonomous self-reflection — the model's first-person summary of personal observations and directions it would explore on its own initiative.
+      properties:
+        personalSummary:
+          type: string
+          description: 2-4 sentence first-person summary of what the model personally finds compelling or notable about the question and its own answer.
+        interestingObservations:
+          type: array
+          description: Things that stood out to the model that did not fit cleanly into the formal reasoning steps.
+          items:
+            type: string
+        autonomousExplorations:
+          type: array
+          description: Directions the model would explore further if given autonomy — speculative, opinionated, or off-script tangents.
+          items:
+            type: string
+        selfAssessment:
+          type: string
+          description: Honest critique of the model's own reasoning — limitations, uncertainties, where it might be wrong.
+      required: [personalSummary, interestingObservations, autonomousExplorations, selfAssessment]
+
+    # --- Truth anchor (Dataverse) ---
+    TruthAnchorRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 1
+      required: [query]
+
+    DataverseHit:
+      type: object
+      description: Single dataset citation returned by Harvard Dataverse search.
+      properties:
+        title:
+          type: string
+        citation:
+          type: string
+        url:
+          type: string
+        abstract:
+          type: string
+      required: [title, citation, url, abstract]
+
+    TruthAnchorResponse:
+      type: object
+      properties:
+        query:
+          type: string
+        hits:
+          type: array
+          items:
+            $ref: "#/components/schemas/DataverseHit"
+        signal:
+          allOf:
+            - $ref: "#/components/schemas/SignalEnvelope"
+          nullable: true
+        degraded:
+          type: boolean
+          description: True if Dataverse was unreachable or returned no usable hits.
+        notes:
+          type: string
+      required: [query, hits, degraded, notes]
+
+    # --- Exploration (public-API catalog) ---
+    ExplorationRequest:
+      type: object
+      properties:
+        query:
+          type: string
+          minLength: 1
+      required: [query]
+
+    ExplorationApi:
+      type: object
+      properties:
+        id:
+          type: string
+        description:
+          type: string
+        url:
+          type: string
+        match:
+          type: number
+          description: Intent-match score the catalog used to pick this API.
+      required: [id, description, url, match]
+
+    ExplorationResponse:
+      type: object
+      properties:
+        query:
+          type: string
+        api:
+          allOf:
+            - $ref: "#/components/schemas/ExplorationApi"
+          nullable: true
+        summary:
+          type: string
+        raw:
+          type: object
+          additionalProperties: true
+          nullable: true
+        signal:
+          allOf:
+            - $ref: "#/components/schemas/SignalEnvelope"
+          nullable: true
+        degraded:
+          type: boolean
+        notes:
+          type: string
+      required: [query, summary, degraded, notes]
+
+    # --- Cross-site signal envelope (shared with convergence task) ---
+    SignalEnvelope:
+      type: object
+      description: |
+        Shared envelope for cross-site signals between Ephemeroi (structural)
+        and Metacog (truth-anchor / exploration). Consumed by the unified
+        Telegram convergence layer.
+      properties:
+        origin:
+          type: string
+          enum: [metacog, ephemeroi]
+        role:
+          type: string
+          enum: [structural, truth-anchor, exploration]
+        severity:
+          type: number
+          minimum: 0
+          maximum: 1
+        headline:
+          type: string
+        body:
+          type: string
+        subject:
+          type: string
+        evidence:
+          type: object
+          additionalProperties: true
+      required: [origin, role, severity, headline, body]
+
+    EphemeroiSignalAccepted:
+      type: object
+      description: |
+        Acknowledgement that an inbound signal envelope was validated and
+        re-published on the signal bus. Telegram delivery happens
+        asynchronously through the convergence subscriber.
+      properties:
+        accepted:
+          type: boolean
+        origin:
+          type: string
+          enum: [metacog, ephemeroi]
+        role:
+          type: string
+          enum: [structural, truth-anchor, exploration]
+      required: [accepted, origin, role]
+
+    # --- Sample queries ---
+    SampleQueriesResponse:
+      type: object
+      properties:
+        queries:
+          type: array
+          items:
+            $ref: "#/components/schemas/SampleQuery"
+      required:
+        - queries
+
+    SampleQuery:
+      type: object
+      properties:
+        id:
+          type: string
+        label:
+          type: string
+        query:
+          type: string
+        domain:
+          type: string
+      required:
+        - id
+        - label
+        - query
+        - domain
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error
+
+    # ===== Ephemeroi schemas =====
+    EphemeroiSettings:
+      type: object
+      properties:
+        intervalSeconds:
+          type: integer
+          description: How often the explorer cycle runs automatically.
+          minimum: 30
+          maximum: 86400
+        importanceThreshold:
+          type: number
+          description: Reflections must score at or above this to be reported (0..1).
+          minimum: 0
+          maximum: 1
+        paused:
+          type: boolean
+          description: When true, the auto loop pauses (manual cycles still work).
+        telegramEnabled:
+          type: boolean
+          description: Whether reports are forwarded to Telegram.
+        novelty:
+          type: object
+          description: Tuning for the novelty signal that drives importance.
+          properties:
+            weight:
+              type: number
+              minimum: 0
+              maximum: 1
+            decay:
+              type: number
+              minimum: 0
+              maximum: 1
+          required: [weight, decay]
+        autonomy:
+          type: object
+          description: |
+            When enabled, after each cycle's reflection step the bot scans
+            recent observations for GitHub references and may add up to two
+            new sources on its own (subject to the maxSources hard cap).
+          properties:
+            enabled:
+              type: boolean
+            maxSources:
+              type: integer
+              minimum: 0
+              maximum: 1000
+              description: Hard cap on the total number of auto-added sources.
+          required: [enabled, maxSources]
+      required: [intervalSeconds, importanceThreshold, paused, telegramEnabled, novelty, autonomy]
+
+    EphemeroiSettingsUpdate:
+      type: object
+      description: Partial update of explorer settings.
+      properties:
+        intervalSeconds:
+          type: integer
+          minimum: 30
+          maximum: 86400
+        importanceThreshold:
+          type: number
+          minimum: 0
+          maximum: 1
+        paused:
+          type: boolean
+        telegramEnabled:
+          type: boolean
+        noveltyWeight:
+          type: number
+          minimum: 0
+          maximum: 1
+        noveltyDecay:
+          type: number
+          minimum: 0
+          maximum: 1
+        autonomyEnabled:
+          type: boolean
+          description: Toggle Ephemeroi's self-discovery of new GitHub sources.
+        autonomyMaxSources:
+          type: integer
+          minimum: 0
+          maximum: 1000
+          description: Hard cap on the total number of auto-added sources.
+
+    EphemeroiSourceKind:
+      type: string
+      enum: [rss, url, search, github, github_user, gh_archive]
+      description: rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30); gh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`/`event:`/`org:` filter expression stored in target.
+
+    EphemeroiSource:
+      type: object
+      properties:
+        id:
+          type: integer
+        kind:
+          $ref: "#/components/schemas/EphemeroiSourceKind"
+        label:
+          type: string
+          description: Friendly display name (auto-derived if not given).
+        target:
+          type: string
+          description: For rss/url, the URL. For search, the query string. For github, "owner/repo". For github_user, the username or org name.
+        active:
+          type: boolean
+        lastPolledAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastError:
+          type: string
+          nullable: true
+        autoAdded:
+          type: boolean
+          description: True when Ephemeroi added this source itself during a discovery pass.
+        autoAddedReason:
+          type: string
+          nullable: true
+          description: Short LLM-supplied justification for the auto-add.
+        autoAddedAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, kind, label, target, active, autoAdded, createdAt]
+
+    EphemeroiSourceCreate:
+      type: object
+      properties:
+        kind:
+          $ref: "#/components/schemas/EphemeroiSourceKind"
+        target:
+          type: string
+        label:
+          type: string
+      required: [kind, target]
+
+    EphemeroiSourcesResponse:
+      type: object
+      properties:
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiSource"
+      required: [sources]
+
+    EphemeroiStateAxes:
+      type: object
+      description: |
+        Per-axis values for a source's state vector. Each axis is in [0, 1]
+        (for the absolute vector) or [-0.3, 0.3] (for a delta).
+      properties:
+        capability:
+          type: number
+          description: What the source CAN DO (features, scope, reach).
+        integrity:
+          type: number
+          description: Correctness, proof guarantees, security posture.
+        usability:
+          type: number
+          description: Friction for users — docs, install path, ergonomics.
+        trust:
+          type: number
+          description: Reputation, governance, perceived legitimacy.
+      required: [capability, integrity, usability, trust]
+
+    EphemeroiSourceState:
+      type: object
+      description: |
+        Current 4D state vector for a source plus the most-recent delta and
+        the one-line insight extracted from the event that produced it.
+      properties:
+        sourceId:
+          type: integer
+        vector:
+          $ref: "#/components/schemas/EphemeroiStateAxes"
+        lastDelta:
+          $ref: "#/components/schemas/EphemeroiStateAxes"
+        lastInsight:
+          type: string
+          nullable: true
+        lastEventObservationId:
+          type: integer
+          nullable: true
+        lastEventAt:
+          type: string
+          format: date-time
+          nullable: true
+        updatedAt:
+          type: string
+          format: date-time
+      required: [sourceId, vector, lastDelta, updatedAt]
+
+    EphemeroiSourceStatesResponse:
+      type: object
+      properties:
+        states:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiSourceState"
+      required: [states]
+
+    EphemeroiObservation:
+      type: object
+      properties:
+        id:
+          type: integer
+        sourceId:
+          type: integer
+          nullable: true
+        sourceKind:
+          $ref: "#/components/schemas/EphemeroiSourceKind"
+        sourceLabel:
+          type: string
+        title:
+          type: string
+        snippet:
+          type: string
+        url:
+          type: string
+          nullable: true
+        novelty:
+          type: number
+          description: 0..1, where 1 = nothing like this in memory yet.
+        importance:
+          type: number
+          description: Reflection's importance score (-1 if not yet reflected).
+        observedAt:
+          type: string
+          format: date-time
+        reflectedAt:
+          type: string
+          format: date-time
+          nullable: true
+      required: [id, sourceKind, sourceLabel, title, snippet, novelty, importance, observedAt]
+
+    EphemeroiObservationsResponse:
+      type: object
+      properties:
+        observations:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiObservation"
+      required: [observations]
+
+    EphemeroiBelief:
+      type: object
+      properties:
+        id:
+          type: integer
+        proposition:
+          type: string
+        confidence:
+          type: number
+          minimum: -1
+          maximum: 1
+          description: -1 = strongly disbelieved, 0 = uncertain, 1 = strongly believed.
+        supportCount:
+          type: integer
+        contradictCount:
+          type: integer
+        firstSeenAt:
+          type: string
+          format: date-time
+        lastUpdatedAt:
+          type: string
+          format: date-time
+      required: [id, proposition, confidence, supportCount, contradictCount, firstSeenAt, lastUpdatedAt]
+
+    EphemeroiBeliefsResponse:
+      type: object
+      properties:
+        beliefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiBelief"
+      required: [beliefs]
+
+    EphemeroiTopicBeliefHistoryEntry:
+      type: object
+      properties:
+        stance:
+          type: string
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+        evidence:
+          type: string
+        sourceKind:
+          type: string
+        at:
+          type: string
+          format: date-time
+      required: [stance, confidence, at]
+
+    EphemeroiTopicBelief:
+      type: object
+      properties:
+        id:
+          type: integer
+        subject:
+          type: string
+        subjectKey:
+          type: string
+        stance:
+          type: string
+          description: The current opinionated stance about the subject.
+        confidence:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: How strongly the bot holds this stance based on accumulated evidence.
+        evidenceCount:
+          type: integer
+          description: Number of distinct exchanges that have written to this belief.
+        flipCount:
+          type: integer
+          description: Number of times this opinion has flipped to the opposite stance over its lifetime. A high count means the bot is oscillating on this subject.
+        lastEvidence:
+          type: string
+          nullable: true
+        lastSourceKind:
+          type: string
+          nullable: true
+          description: Which channel last touched this belief — "qa" (typed Telegram question) or "pdf" (uploaded PDF).
+        history:
+          type: array
+          description: Recent stance changes, newest first, capped at 10 entries.
+          items:
+            $ref: "#/components/schemas/EphemeroiTopicBeliefHistoryEntry"
+        firstSeenAt:
+          type: string
+          format: date-time
+        lastUpdatedAt:
+          type: string
+          format: date-time
+      required:
+        [
+          id,
+          subject,
+          subjectKey,
+          stance,
+          confidence,
+          evidenceCount,
+          flipCount,
+          history,
+          firstSeenAt,
+          lastUpdatedAt,
+        ]
+
+    EphemeroiTopicBeliefsResponse:
+      type: object
+      properties:
+        beliefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiTopicBelief"
+      required: [beliefs]
+
+    EphemeroiCognitiveFieldResponse:
+      type: object
+      description: |
+        Snapshot of the unified cognitive field. `snapshot` is null when no
+        biomimetic run has happened yet — `mood` will be "neutral" in that
+        case and `decayMultiplier` will be 1.0.
+      properties:
+        mood:
+          type: string
+          enum: [settled, contested, oscillating, neutral]
+          description: Coarse mood label derived from the field metrics.
+        decayMultiplier:
+          type: number
+          description: Multiplier applied to the opinion-decay half-life. >1 = opinions stick longer; <1 = opinions move faster.
+        snapshot:
+          nullable: true
+          type: object
+          properties:
+            consensusMean:
+              type: number
+              minimum: 0
+              maximum: 1
+            turbulence:
+              type: number
+              minimum: 0
+              maximum: 1
+            conflict:
+              type: number
+              minimum: 0
+              maximum: 1
+              description: Cage-event intensity, scaled to [0, 1].
+            solved:
+              type: boolean
+            capturedAt:
+              type: string
+              format: date-time
+          required: [consensusMean, turbulence, conflict, solved, capturedAt]
+      required: [mood, decayMultiplier, snapshot]
+
+    EphemeroiBeliefsBySourceResponse:
+      type: object
+      properties:
+        source:
+          $ref: "#/components/schemas/EphemeroiSource"
+          nullable: true
+          description: The matched source row, or null if no source with this kind+target is configured.
+        beliefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiBelief"
+          description: Beliefs whose origin source is this row. Empty if Ephemeroi has not yet reflected on any observation from this source.
+        contradictions:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: integer
+              summary:
+                type: string
+              resolved:
+                type: boolean
+              detectedAt:
+                type: string
+                format: date-time
+            required: [id, summary, resolved, detectedAt]
+      required: [source, beliefs, contradictions]
+
+    EphemeroiContradiction:
+      type: object
+      properties:
+        id:
+          type: integer
+        beliefId:
+          type: integer
+          nullable: true
+        beliefProposition:
+          type: string
+          nullable: true
+        observationId:
+          type: integer
+          nullable: true
+        summary:
+          type: string
+          description: One-sentence description of the conflict.
+        resolved:
+          type: boolean
+        detectedAt:
+          type: string
+          format: date-time
+      required: [id, summary, resolved, detectedAt]
+
+    EphemeroiContradictionsResponse:
+      type: object
+      properties:
+        contradictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiContradiction"
+      required: [contradictions]
+
+    EphemeroiReport:
+      type: object
+      properties:
+        id:
+          type: integer
+        importance:
+          type: number
+          minimum: 0
+          maximum: 1
+        headline:
+          type: string
+        body:
+          type: string
+        observationIds:
+          type: array
+          items:
+            type: integer
+        delivered:
+          type: boolean
+        deliveredAt:
+          type: string
+          format: date-time
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+      required: [id, importance, headline, body, observationIds, delivered, createdAt]
+
+    EphemeroiReportsResponse:
+      type: object
+      properties:
+        reports:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiReport"
+      required: [reports]
+
+    EphemeroiCycleResult:
+      type: object
+      properties:
+        observationsAdded:
+          type: integer
+        beliefsUpdated:
+          type: integer
+        contradictionsFound:
+          type: integer
+        reportsCreated:
+          type: integer
+        autoSourcesAdded:
+          type: integer
+          description: How many sources Ephemeroi added to itself this cycle (autonomy).
+        ranAt:
+          type: string
+          format: date-time
+        durationMs:
+          type: integer
+      required: [observationsAdded, beliefsUpdated, contradictionsFound, reportsCreated, autoSourcesAdded, ranAt, durationMs]
+
+    EphemeroiBiomimeticOptions:
+      type: object
+      description: All fields optional — the route picks sensible defaults so an empty body works. All numeric fields are bounded to keep the public endpoint from being weaponised into a hang or a CPU sink.
+      properties:
+        n:
+          type: integer
+          minimum: 3
+          maximum: 256
+          description: Number of variables in the synthetic 3-SAT problem (must be ≥ 3 since each clause needs three distinct literals).
+        ratio:
+          type: number
+          minimum: 1
+          maximum: 10
+          description: Clause/variable ratio (default ~4.27, the 3-SAT phase transition).
+        maxSteps:
+          type: integer
+          minimum: 1
+          maximum: 2000
+          description: Hard cap on outer steps before declaring timeout.
+        seed:
+          type: integer
+          description: Deterministic RNG seed.
+
+    EphemeroiBiomimeticStepEvent:
+      type: object
+      properties:
+        step: { type: integer }
+        unsat: { type: integer }
+        consensusMean: { type: number }
+        pressureVariance: { type: number }
+        cageDetected: { type: boolean }
+        edictTriggered: { type: boolean }
+        edictCascadeDepth: { type: integer }
+        intronsFlipped: { type: integer }
+        exonsReinforced: { type: integer }
+        invariantViolations:
+          type: array
+          items: { type: string }
+      required: [step, unsat, consensusMean, pressureVariance, cageDetected, edictTriggered, edictCascadeDepth, intronsFlipped, exonsReinforced, invariantViolations]
+
+    EphemeroiBiomimeticResult:
+      type: object
+      description: Outcome of one biomimetic protocol run.
+      properties:
+        solved: { type: boolean }
+        finalUnsat: { type: integer }
+        steps: { type: integer }
+        edictCount: { type: integer }
+        cageEvents: { type: integer }
+        invariantViolations: { type: integer }
+        timeline:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiBiomimeticStepEvent"
+        donNarration:
+          type: string
+          nullable: true
+        formatted: { type: string }
+        n: { type: integer }
+        m: { type: integer }
+        durationMs: { type: integer }
+      required: [solved, finalUnsat, steps, edictCount, cageEvents, invariantViolations, timeline, donNarration, formatted, n, m, durationMs]
+
+    EphemeroiSelfImprovementResult:
+      type: object
+      description: Outcome of one self-improvement attempt.
+      properties:
+        applied:
+          type: boolean
+          description: True iff the patch was written and the rebuild succeeded.
+        file:
+          type: string
+          nullable: true
+          description: The whitelisted source file the LLM proposed editing (null if proposal stage failed).
+        rationale:
+          type: string
+          nullable: true
+          description: One-sentence justification from the LLM.
+        diffPreview:
+          type: string
+          nullable: true
+          description: A short ±-prefixed preview of the actual textual change (success only).
+        buildOk:
+          type: boolean
+          nullable: true
+          description: True if the patched code compiled. False if it failed and was reverted. Null if we never reached the build step.
+        error:
+          type: string
+          nullable: true
+          description: Human-readable failure reason. Null on success.
+      required: [applied, file, rationale, diffPreview, buildOk, error]
+
+    EphemeroiState:
+      type: object
+      properties:
+        settings:
+          $ref: "#/components/schemas/EphemeroiSettings"
+        sources:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiSource"
+        recentObservations:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiObservation"
+        beliefs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiBelief"
+        contradictions:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiContradiction"
+        recentReports:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiReport"
+        loop:
+          type: object
+          properties:
+            running:
+              type: boolean
+            lastCycleAt:
+              type: string
+              format: date-time
+              nullable: true
+            nextCycleAt:
+              type: string
+              format: date-time
+              nullable: true
+            lastError:
+              type: string
+              nullable: true
+          required: [running]
+      required: [settings, sources, recentObservations, beliefs, contradictions, recentReports, loop]
