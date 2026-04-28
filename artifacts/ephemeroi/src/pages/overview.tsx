@@ -58,6 +58,31 @@ export default function Overview() {
         )}
       </header>
 
+      <motion.div
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.5 }}
+      >
+        <Card className="bg-gradient-to-br from-primary/5 via-card/40 to-card/20 border-primary/20 backdrop-blur-sm">
+          <CardContent className="p-6 md:p-8">
+            <div className="flex items-start gap-4">
+              <div className="hidden md:block flex-shrink-0 w-1 self-stretch bg-gradient-to-b from-primary/60 via-primary/30 to-transparent rounded-full" />
+              <div className="space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] uppercase tracking-[0.2em] font-mono text-primary/80">Guiding Premise</span>
+                </div>
+                <p className="font-serif text-lg md:text-xl text-foreground/90 leading-relaxed">
+                  Understanding the way the outside world works is how we navigate and build the computer world and manage the Internet world.
+                </p>
+                <p className="text-sm text-muted-foreground italic">
+                  One of the main beliefs the system strives to act on — <span className="text-primary/80">learn more, prove theories.</span>
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map((stat, i) => (
           <motion.div 
