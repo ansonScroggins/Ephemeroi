@@ -1,0 +1,119 @@
+4.3 Collatz Kick: Structured Energy Injection for Stagnation Escape
+
+The Collatz Kick is the central stagnation‑breaking mechanism in PHASELOCK‑SAT.
+It is inspired by the dynamical structure of the Collatz map, not its number‑theoretic conjecture.
+The solver does not rely on the truth of the Collatz Conjecture; instead, it adopts the shape of Collatz dynamics:
+
+Chaotic exploration under simple local rules, followed by deterministic collapse into a single global attractor.
+
+This pattern mirrors the behavior PHASELOCK‑SAT requires when the search enters a low‑illumination region where local flips fail to produce meaningful descent.
+
+---
+
+4.3.1 Motivation
+
+Local‑search SAT solvers stagnate when:
+
+• illumination density is low,
+• phase mobility collapses,
+• the local energy gradient becomes flat,
+• or the solver cycles through a small set of assignments.
+
+
+Traditional perturbation methods (e.g., random walks, noise injection) break stagnation but do so unstructuredly, often destroying useful partial structure.
+
+PHASELOCK‑SAT instead uses a deterministic, structured perturbation that:
+
+1. injects energy,
+2. preserves partial structure,
+3. forces the system into a new basin,
+4. and guarantees eventual collapse back toward the attractor.
+
+
+This is the role of the Collatz Kick.
+
+---
+
+4.3.2 Definition
+
+Let \( s \) denote the stagnation length (number of flips since last improvement).
+The Collatz Kick consists of two phases:
+
+Phase 1 — Expansion Step (3n + 1 analogue)
+
+A burst of \( k = \min(k_{\max}, 3s + 1) \) flips is applied.
+Each flip is chosen by a biased selector that prefers variables with:
+
+• high potential \( \phi[v] \),
+• high clause weight influence,
+• or high illumination gradient.
+
+
+This corresponds to the “chaotic expansion” phase of Collatz trajectories.
+
+Phase 2 — Contraction Step (division by 2 analogue)
+
+Let \( v_2(k) \) be the number of trailing zeros in the binary representation of \( k \).
+PHASELOCK‑SAT performs \( v_2(k) \) greedy flips, each chosen to minimize energy.
+
+This models the “collapse toward the attractor” phase.
+
+---
+
+4.3.3 Interpretation
+
+The Collatz Kick is not random noise.
+It is a two‑phase dynamical operator:
+
+• Expansion explores a new region of the landscape.
+• Contraction re‑aligns the solver with the global attractor (the phase‑lock basin).
+
+
+This mirrors the Collatz dynamic:
+
+n \rightarrow 3n + 1 \rightarrow \frac{n}{2^m} \rightarrow 1
+
+
+PHASELOCK‑SAT uses this structure to ensure that even large perturbations eventually collapse back into a stable descent trajectory.
+
+---
+
+4.3.4 Effect on Illumination and Phase Mobility
+
+The Collatz Kick increases:
+
+• illumination density, by forcing the solver into regions with new clause interactions,
+• phase mobility, by breaking cycles and flat basins,
+• ergodicity, by ensuring the solver does not remain confined to a low‑visibility region.
+
+
+Unlike random restarts, the Collatz Kick preserves partial structure accumulated before stagnation, allowing the solver to resume descent with improved visibility.
+
+---
+
+4.3.5 Theoretical Role in Expected Apple Descent
+
+In the Expected Apple Descent framework, the Collatz Kick ensures:
+
+• the solver cannot remain indefinitely in a dark region,
+• bounded tunneling remains effective,
+• illumination density eventually becomes positive on a non‑zero measure subset,
+• and the system re‑enters a regime where expected descent is polynomial.
+
+
+Thus, the Collatz Kick is the structured perturbation operator that maintains the conditions required for the Expected Apple Descent theorem.
+
+---
+
+4.3.6 Summary
+
+The Collatz Kick provides PHASELOCK‑SAT with:
+
+• deterministic stagnation escape,
+• structured exploration,
+• guaranteed re‑alignment with the attractor,
+• preservation of useful structure,
+• and improved illumination for subsequent descent.
+
+
+It is the mechanism that transforms PHASELOCK‑SAT from a local‑search algorithm into a multispectral dynamical system capable of navigating complex SAT landscapes with high robustness.
