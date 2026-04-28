@@ -36,6 +36,8 @@ import type {
   EphemeroiSourcesResponse,
   EphemeroiState,
   EphemeroiTopicBeliefsResponse,
+  EphemeroiTrimBeliefRequest,
+  EphemeroiTrimBeliefResponse,
   ErrorResponse,
   ExplorationRequest,
   ExplorationResponse,
@@ -1252,6 +1254,191 @@ export function useListEphemeroiBeliefs<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * Hard-deletes a belief by id. The user-facing "Clear" action on the
+Beliefs page calls this when a belief should be wiped entirely.
+The proposition can re-form later if observations support it again.
+
+ * @summary Clear a belief that is no longer serving
+ */
+export const getDeleteEphemeroiBeliefUrl = (id: number) => {
+  return `/api/ephemeroi/beliefs/${id}`;
+};
+
+export const deleteEphemeroiBelief = async (
+  id: number,
+  options?: RequestInit,
+): Promise<void> => {
+  return customFetch<void>(getDeleteEphemeroiBeliefUrl(id), {
+    ...options,
+    method: "DELETE",
+  });
+};
+
+export const getDeleteEphemeroiBeliefMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteEphemeroiBelief>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof deleteEphemeroiBelief>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["deleteEphemeroiBelief"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof deleteEphemeroiBelief>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return deleteEphemeroiBelief(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type DeleteEphemeroiBeliefMutationResult = NonNullable<
+  Awaited<ReturnType<typeof deleteEphemeroiBelief>>
+>;
+
+export type DeleteEphemeroiBeliefMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Clear a belief that is no longer serving
+ */
+export const useDeleteEphemeroiBelief = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof deleteEphemeroiBelief>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof deleteEphemeroiBelief>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getDeleteEphemeroiBeliefMutationOptions(options));
+};
+
+/**
+ * Soft-trim a belief by scaling its `confidence`, `supportCount` and
+`contradictCount` toward zero by `keepFraction` (0..1). Keeps the
+proposition row intact so the belief can re-form organically with
+new evidence, but discards the bulk of accumulated weight. Used by
+the "Trim" action on the Beliefs page.
+
+ * @summary Keep only a small piece of a belief
+ */
+export const getTrimEphemeroiBeliefUrl = (id: number) => {
+  return `/api/ephemeroi/beliefs/${id}/trim`;
+};
+
+export const trimEphemeroiBelief = async (
+  id: number,
+  ephemeroiTrimBeliefRequest: EphemeroiTrimBeliefRequest,
+  options?: RequestInit,
+): Promise<EphemeroiTrimBeliefResponse> => {
+  return customFetch<EphemeroiTrimBeliefResponse>(
+    getTrimEphemeroiBeliefUrl(id),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(ephemeroiTrimBeliefRequest),
+    },
+  );
+};
+
+export const getTrimEphemeroiBeliefMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof trimEphemeroiBelief>>,
+    TError,
+    { id: number; data: BodyType<EphemeroiTrimBeliefRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof trimEphemeroiBelief>>,
+  TError,
+  { id: number; data: BodyType<EphemeroiTrimBeliefRequest> },
+  TContext
+> => {
+  const mutationKey = ["trimEphemeroiBelief"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof trimEphemeroiBelief>>,
+    { id: number; data: BodyType<EphemeroiTrimBeliefRequest> }
+  > = (props) => {
+    const { id, data } = props ?? {};
+
+    return trimEphemeroiBelief(id, data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TrimEphemeroiBeliefMutationResult = NonNullable<
+  Awaited<ReturnType<typeof trimEphemeroiBelief>>
+>;
+export type TrimEphemeroiBeliefMutationBody =
+  BodyType<EphemeroiTrimBeliefRequest>;
+export type TrimEphemeroiBeliefMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Keep only a small piece of a belief
+ */
+export const useTrimEphemeroiBelief = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof trimEphemeroiBelief>>,
+    TError,
+    { id: number; data: BodyType<EphemeroiTrimBeliefRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof trimEphemeroiBelief>>,
+  TError,
+  { id: number; data: BodyType<EphemeroiTrimBeliefRequest> },
+  TContext
+> => {
+  return useMutation(getTrimEphemeroiBeliefMutationOptions(options));
+};
 
 /**
  * Opinionated stances Ephemeroi has formed about specific named subjects

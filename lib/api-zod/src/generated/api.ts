@@ -722,6 +722,64 @@ export const ListEphemeroiBeliefsResponse = zod.object({
 });
 
 /**
+ * Hard-deletes a belief by id. The user-facing "Clear" action on the
+Beliefs page calls this when a belief should be wiped entirely.
+The proposition can re-form later if observations support it again.
+
+ * @summary Clear a belief that is no longer serving
+ */
+export const DeleteEphemeroiBeliefParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * Soft-trim a belief by scaling its `confidence`, `supportCount` and
+`contradictCount` toward zero by `keepFraction` (0..1). Keeps the
+proposition row intact so the belief can re-form organically with
+new evidence, but discards the bulk of accumulated weight. Used by
+the "Trim" action on the Beliefs page.
+
+ * @summary Keep only a small piece of a belief
+ */
+export const TrimEphemeroiBeliefParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const trimEphemeroiBeliefBodyKeepFractionMin = 0;
+export const trimEphemeroiBeliefBodyKeepFractionMax = 1;
+
+export const TrimEphemeroiBeliefBody = zod.object({
+  keepFraction: zod
+    .number()
+    .min(trimEphemeroiBeliefBodyKeepFractionMin)
+    .max(trimEphemeroiBeliefBodyKeepFractionMax)
+    .describe(
+      "Fraction of the belief's accumulated signal to retain.\n0.0 = soft reset (confidence and counts -> 0, proposition kept).\n0.25 = keep a quarter (default UI option).\n1.0 = no-op.\n",
+    ),
+});
+
+export const trimEphemeroiBeliefResponseBeliefConfidenceMin = -1;
+export const trimEphemeroiBeliefResponseBeliefConfidenceMax = 1;
+
+export const TrimEphemeroiBeliefResponse = zod.object({
+  belief: zod.object({
+    id: zod.number(),
+    proposition: zod.string(),
+    confidence: zod
+      .number()
+      .min(trimEphemeroiBeliefResponseBeliefConfidenceMin)
+      .max(trimEphemeroiBeliefResponseBeliefConfidenceMax)
+      .describe(
+        "-1 = strongly disbelieved, 0 = uncertain, 1 = strongly believed.",
+      ),
+    supportCount: zod.number(),
+    contradictCount: zod.number(),
+    firstSeenAt: zod.coerce.date(),
+    lastUpdatedAt: zod.coerce.date(),
+  }),
+});
+
+/**
  * Opinionated stances Ephemeroi has formed about specific named subjects
 as a side effect of Telegram Q&A and PDF reads. Distinct from
 `/ephemeroi/beliefs`, which is the source-anchored loop output.

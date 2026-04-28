@@ -621,6 +621,23 @@ export interface EphemeroiBeliefsResponse {
   beliefs: EphemeroiBelief[];
 }
 
+export interface EphemeroiTrimBeliefRequest {
+  /**
+   * Fraction of the belief's accumulated signal to retain.
+0.0 = soft reset (confidence and counts -> 0, proposition kept).
+0.25 = keep a quarter (default UI option).
+1.0 = no-op.
+
+   * @minimum 0
+   * @maximum 1
+   */
+  keepFraction: number;
+}
+
+export interface EphemeroiTrimBeliefResponse {
+  belief: EphemeroiBelief;
+}
+
 export interface EphemeroiTopicBeliefHistoryEntry {
   stance: string;
   /**

@@ -47,6 +47,8 @@ export * from "./ephemeroiStateLoop";
 export * from "./ephemeroiTopicBelief";
 export * from "./ephemeroiTopicBeliefHistoryEntry";
 export * from "./ephemeroiTopicBeliefsResponse";
+export * from "./ephemeroiTrimBeliefRequest";
+export * from "./ephemeroiTrimBeliefResponse";
 export * from "./errorResponse";
 export * from "./evaluateStepData";
 export * from "./explorationApi";

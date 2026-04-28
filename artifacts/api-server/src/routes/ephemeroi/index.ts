@@ -10,6 +10,8 @@ import {
   ListEphemeroiObservationsQueryParams,
   ListEphemeroiObservationsResponse,
   ListEphemeroiBeliefsResponse,
+  TrimEphemeroiBeliefBody,
+  TrimEphemeroiBeliefResponse,
   ListEphemeroiTopicBeliefsResponse,
   ListEphemeroiTopicBeliefsQueryParams,
   GetEphemeroiCognitiveFieldResponse,
@@ -32,6 +34,8 @@ import {
   deleteSource,
   listRecentObservations,
   listBeliefs,
+  deleteBelief,
+  trimBelief,
   listBeliefsBySource,
   listTopicBeliefs,
   listContradictions,
@@ -368,6 +372,51 @@ router.get("/ephemeroi/observations", async (req, res) => {
 });
 
 // ===== Beliefs =====
+
+router.delete("/ephemeroi/beliefs/:id", async (req, res) => {
+  const id = Number(req.params["id"]);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid belief id" });
+    return;
+  }
+  try {
+    const ok = await deleteBelief(id);
+    if (!ok) {
+      res.status(404).json({ error: "Belief not found" });
+      return;
+    }
+    res.status(204).send();
+  } catch (err) {
+    logger.error({ err, id }, "DELETE /ephemeroi/beliefs/:id failed");
+    res.status(500).json({ error: "Failed to delete belief" });
+  }
+});
+
+router.post("/ephemeroi/beliefs/:id/trim", async (req, res) => {
+  const id = Number(req.params["id"]);
+  if (!Number.isInteger(id) || id <= 0) {
+    res.status(400).json({ error: "Invalid belief id" });
+    return;
+  }
+  const parsed = TrimEphemeroiBeliefBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  try {
+    const updated = await trimBelief(id, parsed.data.keepFraction);
+    if (!updated) {
+      res.status(404).json({ error: "Belief not found" });
+      return;
+    }
+    res.json(
+      TrimEphemeroiBeliefResponse.parse({ belief: beliefToWire(updated) }),
+    );
+  } catch (err) {
+    logger.error({ err, id }, "POST /ephemeroi/beliefs/:id/trim failed");
+    res.status(500).json({ error: "Failed to trim belief" });
+  }
+});
 
 router.get("/ephemeroi/beliefs", async (_req, res) => {
   try {

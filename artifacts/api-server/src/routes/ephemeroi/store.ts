@@ -600,7 +600,13 @@ export async function upsertBelief(input: {
     );
     const support = input.deltaConfidence > 0 ? 1 : 0;
     const contradict = input.deltaConfidence < 0 ? 1 : 0;
-    await db
+    // RETURNING the updated row in the same statement avoids a separate
+    // re-read that could fail with a non-null assertion crash if the user
+    // (or another process) deleted/cleared the belief between the read
+    // above and the read after the update. If the row vanished mid-flight,
+    // we transparently fall through to insert, so a reflection cycle is
+    // never killed by a concurrent "Clear belief" UI action.
+    const updated = await db
       .update(ephemeroiBeliefsTable)
       .set({
         confidence: newConfidence,
@@ -611,9 +617,12 @@ export async function upsertBelief(input: {
           existing.originSourceId ?? input.originSourceId ?? null,
         lastUpdatedAt: new Date(),
       })
-      .where(eq(ephemeroiBeliefsTable.id, existing.id));
-    const updated = await findBeliefByProposition(input.proposition);
-    return updated!;
+      .where(eq(ephemeroiBeliefsTable.id, existing.id))
+      .returning();
+    if (updated.length > 0) return rowToBelief(updated[0]!);
+    // Existing row was deleted between the read and the update — fall
+    // through to the insert path below so the reflection still records
+    // its delta as a freshly re-formed belief.
   }
   const inserted = await db
     .insert(ephemeroiBeliefsTable)
@@ -627,6 +636,61 @@ export async function upsertBelief(input: {
     })
     .returning();
   return rowToBelief(inserted[0]!);
+}
+
+/**
+ * Hard-delete a belief by id. Used by the "clear" UI action when the user
+ * decides a belief is no longer serving and should be wiped entirely.
+ *
+ * Returns true if a row was deleted, false if no belief with that id existed.
+ */
+export async function deleteBelief(id: number): Promise<boolean> {
+  const deleted = await db
+    .delete(ephemeroiBeliefsTable)
+    .where(eq(ephemeroiBeliefsTable.id, id))
+    .returning({ id: ephemeroiBeliefsTable.id });
+  return deleted.length > 0;
+}
+
+/**
+ * Soft-trim a belief: scale its confidence and support/contradict counts
+ * down toward zero by `keepFraction` (0..1). Used by the "trim" UI action
+ * when the user wants to preserve the proposition (so it can re-form
+ * organically) but discard most of its accumulated weight.
+ *
+ *   keepFraction = 0.0  → equivalent to a soft reset (counts -> 0, conf -> 0)
+ *   keepFraction = 0.25 → keep a quarter of the signal (the default UI option)
+ *   keepFraction = 1.0  → no-op
+ *
+ * IMPORTANT: this uses a single SQL UPDATE with column-expression scaling
+ * (rather than read-then-write) so it is safe against concurrent
+ * reflection cycles touching the same belief — there is no read/compute/
+ * write window where a parallel upsert could be lost. RETURNING gives us
+ * the post-update row in the same statement.
+ */
+export async function trimBelief(
+  id: number,
+  keepFraction: number,
+): Promise<BeliefRow | null> {
+  const k = clamp(keepFraction, 0, 1);
+  // Confidence is already in [-1, 1]; scaling by k ∈ [0,1] keeps it in
+  // range so no GREATEST/LEAST clamp is needed. Counts are non-negative
+  // integers; floor() avoids fractional rows from float multiplication.
+  // Cast `k` to float8 in-SQL so Postgres doesn't try to coerce the bound
+  // parameter to an int based on the surrounding integer column context
+  // (which would fail with "invalid input syntax for type integer: 0.25").
+  const updated = await db
+    .update(ephemeroiBeliefsTable)
+    .set({
+      confidence: sql`${ephemeroiBeliefsTable.confidence} * (${k}::float8)`,
+      supportCount: sql`floor(${ephemeroiBeliefsTable.supportCount}::float8 * (${k}::float8))::int`,
+      contradictCount: sql`floor(${ephemeroiBeliefsTable.contradictCount}::float8 * (${k}::float8))::int`,
+      lastUpdatedAt: new Date(),
+    })
+    .where(eq(ephemeroiBeliefsTable.id, id))
+    .returning();
+  if (updated.length === 0) return null;
+  return rowToBelief(updated[0]!);
 }
 
 export async function listBeliefsBySource(

@@ -295,6 +295,66 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EphemeroiBeliefsResponse"
+  /ephemeroi/beliefs/{id}:
+    delete:
+      operationId: deleteEphemeroiBelief
+      tags: [ephemeroi]
+      summary: Clear a belief that is no longer serving
+      description: |
+        Hard-deletes a belief by id. The user-facing "Clear" action on the
+        Beliefs page calls this when a belief should be wiped entirely.
+        The proposition can re-form later if observations support it again.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/beliefs/{id}/trim:
+    post:
+      operationId: trimEphemeroiBelief
+      tags: [ephemeroi]
+      summary: Keep only a small piece of a belief
+      description: |
+        Soft-trim a belief by scaling its `confidence`, `supportCount` and
+        `contradictCount` toward zero by `keepFraction` (0..1). Keeps the
+        proposition row intact so the belief can re-form organically with
+        new evidence, but discards the bulk of accumulated weight. Used by
+        the "Trim" action on the Beliefs page.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EphemeroiTrimBeliefRequest"
+      responses:
+        "200":
+          description: Updated belief
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiTrimBeliefResponse"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
   /ephemeroi/topic-beliefs:
     get:
       operationId: listEphemeroiTopicBeliefs
@@ -1280,6 +1340,27 @@ components:
           items:
             $ref: "#/components/schemas/EphemeroiBelief"
       required: [beliefs]
+
+    EphemeroiTrimBeliefRequest:
+      type: object
+      properties:
+        keepFraction:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: |
+            Fraction of the belief's accumulated signal to retain.
+            0.0 = soft reset (confidence and counts -> 0, proposition kept).
+            0.25 = keep a quarter (default UI option).
+            1.0 = no-op.
+      required: [keepFraction]
+
+    EphemeroiTrimBeliefResponse:
+      type: object
+      properties:
+        belief:
+          $ref: "#/components/schemas/EphemeroiBelief"
+      required: [belief]
 
     EphemeroiTopicBeliefHistoryEntry:
       type: object
