@@ -44,6 +44,12 @@ The AI speaks in a single first-person voice across every step. All system promp
 - **Autonomous topic beliefs**: Extracts and stores `{subject, stance, confidence, evidence}` from Telegram conversations, autonomously mutating belief table.
 - **Unified cognitive substrate**: Integrates autonomous topic beliefs, Don/Wife/Son persona, and biomimetic solver into a single closed loop. Features opinion dynamics (reinforcement, blending, flipping), periodic confidence decay modulated by the cognitive field state, and cross-surface coherence in answers via persona-mood injection and prior opinions.
 
+## Theory Document
+- **`THEORY.md`** at repo root: standalone PHASELOCK‑SAT writeup — the operational kernel that ties together SCM (physics), Apple Theory (philosophy), and the Prism Architecture. Defines Illumination Density L(A), Phase Mobility ϕ(A), the Expected Apple Descent theorem, the canonical mechanism set, and the Prism planet ↔ SCM mechanism mapping. Authored in the user's voice; do not paraphrase.
+
+## GitHub Mirror
+- Project is mirrored to `github.com/ansonScroggins/Ephemeroi` (default branch `main`). Pushes happen via the GitHub connection (`@replit/connectors-sdk`) using the Git Data REST API rather than `git push`, because the main agent's bash sandbox blocks destructive git commands. The original remote `LICENSE` is preserved across snapshot pushes.
+
 ## Unified Cross-Site Telegram Stream
 - **Shared signal envelope**: Both Ephemeroi and Metacog describe outbound alerts as a `SignalEnvelope` shape.
 - **Convergence subscriber**: Buffers envelopes, merging same-subject signals from different limbs within a configurable window into a single Telegram message. Ensures strict single-message-per-pair semantics and handles same-origin burst deduplication.
