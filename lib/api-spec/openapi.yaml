@@ -245,6 +245,49 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/sources/{id}/stream:
+    post:
+      operationId: streamEphemeroiSource
+      tags: [ephemeroi]
+      summary: Run one streaming ingest pass for a source
+      description: |
+        Triggers the `ingest → interpret → emit → (repeat)` pipeline for
+        the given source immediately and waits for it to complete (up to 60 s).
+
+        Chunks arrive from the source URL via a streaming HTTP fetch; each
+        logical unit (NDJSON line or text paragraph) is interpreted and
+        inserted as an observation the moment it is ready — the SSE bus fires
+        before the next chunk is even read.
+
+        Works for any source kind, but is most impactful for `stream` and
+        `gh_archive` sources where the response body is large or continuous.
+        For `rss`, `url`, and `search` sources this is equivalent to a manual
+        cycle trigger limited to that one source.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Streaming pass result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiStreamIngestResponse"
+        "404":
+          description: Source not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "503":
+          description: Stream failed (propagated in errors array of response body)
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiStreamIngestResponse"
   /ephemeroi/source-states:
     get:
       operationId: listEphemeroiSourceStates
@@ -1239,8 +1282,15 @@ components:
 
     EphemeroiSourceKind:
       type: string
-      enum: [rss, url, search, github, github_user, gh_archive]
-      description: rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30); gh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`/`event:`/`org:` filter expression stored in target.
+      enum: [rss, url, search, github, github_user, gh_archive, stream]
+      description: |
+        rss = poll an RSS/Atom feed;
+        url = fetch a single URL on a schedule;
+        search = a periodic web search query;
+        github = poll a public github.com repo for new commits, releases, and issue activity;
+        github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30);
+        gh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`/`event:`/`org:` filter expression stored in target;
+        stream = any HTTP endpoint that emits a continuous or large body (NDJSON / text stream) — chunks are interpreted and emitted to the SSE bus as they arrive rather than after the full response completes.
 
     EphemeroiSource:
       type: object
@@ -1497,6 +1547,31 @@ components:
         description:
           type: string
       required: [name, signature, planet, personaWeights, expectedEffect, description]
+
+    EphemeroiStreamIngestResponse:
+      type: object
+      description: Result of one `ingest → interpret → emit` streaming pass.
+      properties:
+        addedCount:
+          type: integer
+          description: Number of new observations inserted.
+        bytesRead:
+          type: integer
+          description: Total bytes read from the source URL.
+        unitsInterpreted:
+          type: integer
+          description: Number of logical units (NDJSON lines or text paragraphs) interpreted.
+        errors:
+          type: array
+          items:
+            type: string
+          description: Non-fatal errors encountered during the pass (e.g. a malformed JSON line).
+        observations:
+          type: array
+          description: The new observations added during this pass (empty if none).
+          items:
+            $ref: "#/components/schemas/EphemeroiObservation"
+      required: [addedCount, bytesRead, unitsInterpreted, errors, observations]
 
     EphemeroiSpectralOperatorsResponse:
       type: object

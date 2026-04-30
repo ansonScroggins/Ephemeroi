@@ -7,7 +7,14 @@
  */
 
 /**
- * rss = poll an RSS/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30); gh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`/`event:`/`org:` filter expression stored in target.
+ * rss = poll an RSS/Atom feed;
+url = fetch a single URL on a schedule;
+search = a periodic web search query;
+github = poll a public github.com repo for new commits, releases, and issue activity;
+github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30);
+gh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`/`event:`/`org:` filter expression stored in target;
+stream = any HTTP endpoint that emits a continuous or large body (NDJSON / text stream) — chunks are interpreted and emitted to the SSE bus as they arrive rather than after the full response completes.
+
  */
 export type EphemeroiSourceKind =
   (typeof EphemeroiSourceKind)[keyof typeof EphemeroiSourceKind];
@@ -19,4 +26,5 @@ export const EphemeroiSourceKind = {
   github: "github",
   github_user: "github_user",
   gh_archive: "gh_archive",
+  stream: "stream",
 } as const;

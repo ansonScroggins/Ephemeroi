@@ -259,9 +259,17 @@ export const GetEphemeroiStateResponse = zod.object({
     zod.object({
       id: zod.number(),
       kind: zod
-        .enum(["rss", "url", "search", "github", "github_user", "gh_archive"])
+        .enum([
+          "rss",
+          "url",
+          "search",
+          "github",
+          "github_user",
+          "gh_archive",
+          "stream",
+        ])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30); gh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target.",
+          "rss = poll an RSS\/Atom feed;\nurl = fetch a single URL on a schedule;\nsearch = a periodic web search query;\ngithub = poll a public github.com repo for new commits, releases, and issue activity;\ngithub_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30);\ngh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target;\nstream = any HTTP endpoint that emits a continuous or large body (NDJSON \/ text stream) — chunks are interpreted and emitted to the SSE bus as they arrive rather than after the full response completes.\n",
         ),
       label: zod
         .string()
@@ -292,9 +300,17 @@ export const GetEphemeroiStateResponse = zod.object({
       id: zod.number(),
       sourceId: zod.number().nullish(),
       sourceKind: zod
-        .enum(["rss", "url", "search", "github", "github_user", "gh_archive"])
+        .enum([
+          "rss",
+          "url",
+          "search",
+          "github",
+          "github_user",
+          "gh_archive",
+          "stream",
+        ])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30); gh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target.",
+          "rss = poll an RSS\/Atom feed;\nurl = fetch a single URL on a schedule;\nsearch = a periodic web search query;\ngithub = poll a public github.com repo for new commits, releases, and issue activity;\ngithub_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30);\ngh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target;\nstream = any HTTP endpoint that emits a continuous or large body (NDJSON \/ text stream) — chunks are interpreted and emitted to the SSE bus as they arrive rather than after the full response completes.\n",
         ),
       sourceLabel: zod.string(),
       title: zod.string(),
@@ -545,9 +561,17 @@ export const ListEphemeroiSourcesResponse = zod.object({
     zod.object({
       id: zod.number(),
       kind: zod
-        .enum(["rss", "url", "search", "github", "github_user", "gh_archive"])
+        .enum([
+          "rss",
+          "url",
+          "search",
+          "github",
+          "github_user",
+          "gh_archive",
+          "stream",
+        ])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30); gh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target.",
+          "rss = poll an RSS\/Atom feed;\nurl = fetch a single URL on a schedule;\nsearch = a periodic web search query;\ngithub = poll a public github.com repo for new commits, releases, and issue activity;\ngithub_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30);\ngh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target;\nstream = any HTTP endpoint that emits a continuous or large body (NDJSON \/ text stream) — chunks are interpreted and emitted to the SSE bus as they arrive rather than after the full response completes.\n",
         ),
       label: zod
         .string()
@@ -580,9 +604,17 @@ export const ListEphemeroiSourcesResponse = zod.object({
  */
 export const CreateEphemeroiSourceBody = zod.object({
   kind: zod
-    .enum(["rss", "url", "search", "github", "github_user", "gh_archive"])
+    .enum([
+      "rss",
+      "url",
+      "search",
+      "github",
+      "github_user",
+      "gh_archive",
+      "stream",
+    ])
     .describe(
-      "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30); gh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target.",
+      "rss = poll an RSS\/Atom feed;\nurl = fetch a single URL on a schedule;\nsearch = a periodic web search query;\ngithub = poll a public github.com repo for new commits, releases, and issue activity;\ngithub_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30);\ngh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target;\nstream = any HTTP endpoint that emits a continuous or large body (NDJSON \/ text stream) — chunks are interpreted and emitted to the SSE bus as they arrive rather than after the full response completes.\n",
     ),
   target: zod.string(),
   label: zod.string().optional(),
@@ -594,6 +626,78 @@ export const CreateEphemeroiSourceBody = zod.object({
 export const DeleteEphemeroiSourceParams = zod.object({
   id: zod.coerce.number(),
 });
+
+/**
+ * Triggers the `ingest → interpret → emit → (repeat)` pipeline for
+the given source immediately and waits for it to complete (up to 60 s).
+
+Chunks arrive from the source URL via a streaming HTTP fetch; each
+logical unit (NDJSON line or text paragraph) is interpreted and
+inserted as an observation the moment it is ready — the SSE bus fires
+before the next chunk is even read.
+
+Works for any source kind, but is most impactful for `stream` and
+`gh_archive` sources where the response body is large or continuous.
+For `rss`, `url`, and `search` sources this is equivalent to a manual
+cycle trigger limited to that one source.
+
+ * @summary Run one streaming ingest pass for a source
+ */
+export const StreamEphemeroiSourceParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const StreamEphemeroiSourceResponse = zod
+  .object({
+    addedCount: zod.number().describe("Number of new observations inserted."),
+    bytesRead: zod.number().describe("Total bytes read from the source URL."),
+    unitsInterpreted: zod
+      .number()
+      .describe(
+        "Number of logical units (NDJSON lines or text paragraphs) interpreted.",
+      ),
+    errors: zod
+      .array(zod.string())
+      .describe(
+        "Non-fatal errors encountered during the pass (e.g. a malformed JSON line).",
+      ),
+    observations: zod
+      .array(
+        zod.object({
+          id: zod.number(),
+          sourceId: zod.number().nullish(),
+          sourceKind: zod
+            .enum([
+              "rss",
+              "url",
+              "search",
+              "github",
+              "github_user",
+              "gh_archive",
+              "stream",
+            ])
+            .describe(
+              "rss = poll an RSS\/Atom feed;\nurl = fetch a single URL on a schedule;\nsearch = a periodic web search query;\ngithub = poll a public github.com repo for new commits, releases, and issue activity;\ngithub_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30);\ngh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target;\nstream = any HTTP endpoint that emits a continuous or large body (NDJSON \/ text stream) — chunks are interpreted and emitted to the SSE bus as they arrive rather than after the full response completes.\n",
+            ),
+          sourceLabel: zod.string(),
+          title: zod.string(),
+          snippet: zod.string(),
+          url: zod.string().nullish(),
+          novelty: zod
+            .number()
+            .describe("0..1, where 1 = nothing like this in memory yet."),
+          importance: zod
+            .number()
+            .describe(
+              "Reflection's importance score (-1 if not yet reflected).",
+            ),
+          observedAt: zod.coerce.date(),
+          reflectedAt: zod.coerce.date().nullish(),
+        }),
+      )
+      .describe("The new observations added during this pass (empty if none)."),
+  })
+  .describe("Result of one `ingest → interpret → emit` streaming pass.");
 
 /**
  * Returns one state row per source that has had at least one
@@ -675,9 +779,17 @@ export const ListEphemeroiObservationsResponse = zod.object({
       id: zod.number(),
       sourceId: zod.number().nullish(),
       sourceKind: zod
-        .enum(["rss", "url", "search", "github", "github_user", "gh_archive"])
+        .enum([
+          "rss",
+          "url",
+          "search",
+          "github",
+          "github_user",
+          "gh_archive",
+          "stream",
+        ])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30); gh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target.",
+          "rss = poll an RSS\/Atom feed;\nurl = fetch a single URL on a schedule;\nsearch = a periodic web search query;\ngithub = poll a public github.com repo for new commits, releases, and issue activity;\ngithub_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30);\ngh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target;\nstream = any HTTP endpoint that emits a continuous or large body (NDJSON \/ text stream) — chunks are interpreted and emitted to the SSE bus as they arrive rather than after the full response completes.\n",
         ),
       sourceLabel: zod.string(),
       title: zod.string(),
@@ -934,6 +1046,7 @@ export const ListEphemeroiBeliefsBySourceQueryParams = zod.object({
     "github",
     "github_user",
     "gh_archive",
+    "stream",
   ]),
   target: zod.coerce
     .string()
@@ -950,9 +1063,17 @@ export const ListEphemeroiBeliefsBySourceResponse = zod.object({
     .object({
       id: zod.number(),
       kind: zod
-        .enum(["rss", "url", "search", "github", "github_user", "gh_archive"])
+        .enum([
+          "rss",
+          "url",
+          "search",
+          "github",
+          "github_user",
+          "gh_archive",
+          "stream",
+        ])
         .describe(
-          "rss = poll an RSS\/Atom feed; url = fetch a single URL on a schedule; search = a periodic web search query; github = poll a public github.com repo for new commits, releases, and issue activity; github_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30); gh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target.",
+          "rss = poll an RSS\/Atom feed;\nurl = fetch a single URL on a schedule;\nsearch = a periodic web search query;\ngithub = poll a public github.com repo for new commits, releases, and issue activity;\ngithub_user = poll all public repos owned by a github.com user or org (capped to the most-recently-pushed 30);\ngh_archive = stream one hour at a time from the gharchive.org public-event firehose, narrowed by a comma-separated `repo:`\/`event:`\/`org:` filter expression stored in target;\nstream = any HTTP endpoint that emits a continuous or large body (NDJSON \/ text stream) — chunks are interpreted and emitted to the SSE bus as they arrive rather than after the full response completes.\n",
         ),
       label: zod
         .string()

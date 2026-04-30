@@ -12,6 +12,7 @@ import { observationToWire } from "./wire";
 import { safePublicFetch } from "./guard";
 import { ingestGithub, ingestGithubUser } from "./ingest-github";
 import { ingestGhArchive } from "./ingest-gharchive";
+import { runStreamIngest } from "./stream-ingest";
 
 const MAX_ITEMS_PER_SOURCE = 8;
 const FETCH_TIMEOUT_MS = 12_000;
@@ -45,10 +46,17 @@ export async function ingestSource(source: SourceRow): Promise<{
     } else if (source.kind === "gh_archive") {
       const result = await ingestGhArchive(source);
       added = result.added;
+    } else if (source.kind === "stream") {
+      const result = await runStreamIngest(source);
+      added = result.added;
     }
     await markSourcePolled(source.id, null);
-    for (const obs of added) {
-      bus.publish({ type: "observation", payload: observationToWire(obs) });
+    // "stream" sources already emit to the bus per-chunk inside runStreamIngest
+    // (that's the whole point — real-time emission). All other kinds emit here.
+    if (source.kind !== "stream") {
+      for (const obs of added) {
+        bus.publish({ type: "observation", payload: observationToWire(obs) });
+      }
     }
     return { added, error: null };
   } catch (err) {

@@ -22,6 +22,8 @@ import {
   RunEphemeroiSelfImprovementResponse,
   RunEphemeroiBiomimeticBody,
   RunEphemeroiBiomimeticResponse,
+  StreamEphemeroiSourceParams,
+  StreamEphemeroiSourceResponse,
   ListEphemeroiSpectralOperatorsResponse,
   GetEphemeroiSpectralStateResponse,
   InvokeEphemeroiSpectralOperatorBody,
@@ -30,6 +32,7 @@ import {
   ListEphemeroiSpectralInvocationsResponse,
 } from "@workspace/api-zod";
 import { runSelfImprovement, SelfImproveInFlightError } from "./selfImprove";
+import { runStreamIngest } from "./stream-ingest";
 import { runBiomimetic } from "./biomimetic";
 import {
   getSettings,
@@ -350,6 +353,45 @@ router.delete("/ephemeroi/sources/:id", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "DELETE /ephemeroi/sources failed");
     res.status(500).json({ error: "Failed to delete source" });
+  }
+});
+
+// ===== Stream ingest (on-demand) =====
+
+router.post("/ephemeroi/sources/:id/stream", async (req, res) => {
+  const parsed = StreamEphemeroiSourceParams.safeParse({
+    id: Number(req.params["id"]),
+  });
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid source ID" });
+    return;
+  }
+  try {
+    // Look up the source — use the full list (sources table is small).
+    const all = await listSources();
+    const source = all.find((s) => s.id === parsed.data.id);
+    if (!source) {
+      res.status(404).json({ error: "Source not found" });
+      return;
+    }
+    if (!source.active) {
+      res.status(400).json({ error: "Source is inactive — activate it first" });
+      return;
+    }
+    const result = await runStreamIngest(source);
+    const wireObs = result.added.map(observationToWire);
+    const response = StreamEphemeroiSourceResponse.parse({
+      addedCount: result.added.length,
+      bytesRead: result.bytesRead,
+      unitsInterpreted: result.unitsInterpreted,
+      errors: result.errors,
+      observations: wireObs,
+    });
+    const statusCode = result.errors.length > 0 && result.added.length === 0 ? 503 : 200;
+    res.status(statusCode).json(response);
+  } catch (err) {
+    logger.error({ err }, "POST /ephemeroi/sources/:id/stream failed");
+    res.status(500).json({ error: "Streaming ingest failed" });
   }
 });
 

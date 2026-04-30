@@ -40,6 +40,7 @@ import type {
   EphemeroiSpectralOperatorsResponse,
   EphemeroiSpectralStateResponse,
   EphemeroiState,
+  EphemeroiStreamIngestResponse,
   EphemeroiTopicBeliefsResponse,
   EphemeroiTrimBeliefRequest,
   EphemeroiTrimBeliefResponse,
@@ -994,6 +995,108 @@ export const useDeleteEphemeroiSource = <
   TContext
 > => {
   return useMutation(getDeleteEphemeroiSourceMutationOptions(options));
+};
+
+/**
+ * Triggers the `ingest → interpret → emit → (repeat)` pipeline for
+the given source immediately and waits for it to complete (up to 60 s).
+
+Chunks arrive from the source URL via a streaming HTTP fetch; each
+logical unit (NDJSON line or text paragraph) is interpreted and
+inserted as an observation the moment it is ready — the SSE bus fires
+before the next chunk is even read.
+
+Works for any source kind, but is most impactful for `stream` and
+`gh_archive` sources where the response body is large or continuous.
+For `rss`, `url`, and `search` sources this is equivalent to a manual
+cycle trigger limited to that one source.
+
+ * @summary Run one streaming ingest pass for a source
+ */
+export const getStreamEphemeroiSourceUrl = (id: number) => {
+  return `/api/ephemeroi/sources/${id}/stream`;
+};
+
+export const streamEphemeroiSource = async (
+  id: number,
+  options?: RequestInit,
+): Promise<EphemeroiStreamIngestResponse> => {
+  return customFetch<EphemeroiStreamIngestResponse>(
+    getStreamEphemeroiSourceUrl(id),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getStreamEphemeroiSourceMutationOptions = <
+  TError = ErrorType<ErrorResponse | EphemeroiStreamIngestResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof streamEphemeroiSource>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof streamEphemeroiSource>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  const mutationKey = ["streamEphemeroiSource"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof streamEphemeroiSource>>,
+    { id: number }
+  > = (props) => {
+    const { id } = props ?? {};
+
+    return streamEphemeroiSource(id, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type StreamEphemeroiSourceMutationResult = NonNullable<
+  Awaited<ReturnType<typeof streamEphemeroiSource>>
+>;
+
+export type StreamEphemeroiSourceMutationError = ErrorType<
+  ErrorResponse | EphemeroiStreamIngestResponse
+>;
+
+/**
+ * @summary Run one streaming ingest pass for a source
+ */
+export const useStreamEphemeroiSource = <
+  TError = ErrorType<ErrorResponse | EphemeroiStreamIngestResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof streamEphemeroiSource>>,
+    TError,
+    { id: number },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof streamEphemeroiSource>>,
+  TError,
+  { id: number },
+  TContext
+> => {
+  return useMutation(getStreamEphemeroiSourceMutationOptions(options));
 };
 
 /**

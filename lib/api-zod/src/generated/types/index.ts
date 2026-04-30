@@ -56,6 +56,7 @@ export * from "./ephemeroiSpectralStateResponse";
 export * from "./ephemeroiState";
 export * from "./ephemeroiStateAxes";
 export * from "./ephemeroiStateLoop";
+export * from "./ephemeroiStreamIngestResponse";
 export * from "./ephemeroiTopicBelief";
 export * from "./ephemeroiTopicBeliefHistoryEntry";
 export * from "./ephemeroiTopicBeliefsResponse";

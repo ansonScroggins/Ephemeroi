@@ -117,7 +117,8 @@ export type SourceKind =
   | "search"
   | "github"
   | "github_user"
-  | "gh_archive";
+  | "gh_archive"
+  | "stream";
 
 export interface SourceRow {
   id: number;

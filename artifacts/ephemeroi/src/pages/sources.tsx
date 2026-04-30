@@ -4,13 +4,14 @@ import {
   useListEphemeroiSourceStates,
   useCreateEphemeroiSource, 
   useDeleteEphemeroiSource,
+  useStreamEphemeroiSource,
   getListEphemeroiSourcesQueryKey,
   type EphemeroiSourceState,
   type EphemeroiStateAxes
 } from "@workspace/api-client-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
-import { Radio, Search, Link as LinkIcon, Trash2, Plus, AlertCircle, RefreshCw, Github, Users, Sparkles, ArrowUp, ArrowDown, Database } from "lucide-react";
+import { Radio, Search, Link as LinkIcon, Trash2, Plus, AlertCircle, RefreshCw, Github, Users, Sparkles, ArrowUp, ArrowDown, Database, Rss, Zap } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -20,12 +21,6 @@ import { useToast } from "@/hooks/use-toast";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useQueryClient } from "@tanstack/react-query";
 
-/**
- * Per-source 4D state vector: 4 thin horizontal bars, each labelled with
- * its first letter, plus a Δ arrow showing direction of the most recent
- * move on that axis. This is intentionally compact — it's a glance, not
- * a dashboard. Click-through to a full reading lives in the report flow.
- */
 function StateMiniDisplay({ state }: { state: EphemeroiSourceState }) {
   const axes: Array<{ key: keyof EphemeroiStateAxes; letter: string; label: string }> = [
     { key: "capability", letter: "C", label: "Capability" },
@@ -71,12 +66,14 @@ function StateMiniDisplay({ state }: { state: EphemeroiSourceState }) {
       })}
       {state.lastInsight && (
         <p className="text-[10px] italic text-muted-foreground/80 pt-1 line-clamp-2">
-          “{state.lastInsight}”
+          "{state.lastInsight}"
         </p>
       )}
     </div>
   );
 }
+
+type SourceKind = "rss" | "url" | "search" | "github" | "github_user" | "gh_archive" | "stream";
 
 export default function Sources() {
   const queryClient = useQueryClient();
@@ -84,7 +81,10 @@ export default function Sources() {
   const { data: statesData } = useListEphemeroiSourceStates();
   const createSource = useCreateEphemeroiSource();
   const deleteSource = useDeleteEphemeroiSource();
+  const streamSource = useStreamEphemeroiSource();
   const { toast } = useToast();
+
+  const [streamingId, setStreamingId] = useState<number | null>(null);
 
   const stateBySourceId = useMemo(() => {
     const m = new Map<number, EphemeroiSourceState>();
@@ -92,64 +92,46 @@ export default function Sources() {
     return m;
   }, [statesData]);
 
-  const [kind, setKind] = useState<"rss" | "url" | "search" | "github" | "github_user" | "gh_archive">("rss");
+  const [kind, setKind] = useState<SourceKind>("rss");
   const [target, setTarget] = useState("");
   const [label, setLabel] = useState("");
 
   const githubPattern = /^([\w][\w.-]*\/[\w][\w.-]*|https?:\/\/(?:www\.)?github\.com\/[\w][\w.-]*\/[\w][\w.-]*\/?$)/i;
-  // For github_user we accept a bare username/org or the github.com/<user> URL
-  // (no /repo path). Server re-validates and canonicalises.
   const githubUserPattern = /^([\w][\w-]*|https?:\/\/(?:www\.)?github\.com\/[\w][\w-]*\/?$)/i;
+  const ghArchivePattern = /^\s*(repo|event|org)\s*:\s*[\w./@-]+(?:\s*,\s*(repo|event|org)\s*:\s*[\w./@-]+)*\s*$/i;
+
   const githubInvalid = kind === "github" && target.length > 0 && !githubPattern.test(target.trim());
   const githubUserInvalid = kind === "github_user" && target.length > 0 && !githubUserPattern.test(target.trim());
-  // gh_archive filter expression: comma-separated key:value pairs where key
-  // ∈ {repo, event, org}. Target is required (input has `required` attr) and
-  // visually nudged against because it's almost certainly a mistake.
-  const ghArchivePattern = /^\s*(repo|event|org)\s*:\s*[\w./@-]+(?:\s*,\s*(repo|event|org)\s*:\s*[\w./@-]+)*\s*$/i;
-  const ghArchiveInvalid =
-    kind === "gh_archive" && target.length > 0 && !ghArchivePattern.test(target.trim());
+  const ghArchiveInvalid = kind === "gh_archive" && target.length > 0 && !ghArchivePattern.test(target.trim());
+  const streamUrlInvalid = kind === "stream" && target.length > 0 && !/^https?:\/\/.+/.test(target.trim());
 
   const handleCreate = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!target) return;
     if (kind === "github" && !githubPattern.test(target.trim())) {
-      toast({
-        title: "Invalid GitHub repo",
-        description: "Use \"owner/repo\" or a github.com URL.",
-        variant: "destructive",
-      });
+      toast({ title: "Invalid GitHub repo", description: "Use \"owner/repo\" or a github.com URL.", variant: "destructive" });
       return;
     }
     if (kind === "github_user" && !githubUserPattern.test(target.trim())) {
-      toast({
-        title: "Invalid GitHub user",
-        description: "Use a username/org or a github.com/<user> URL.",
-        variant: "destructive",
-      });
+      toast({ title: "Invalid GitHub user", description: "Use a username/org or a github.com/<user> URL.", variant: "destructive" });
       return;
     }
     if (kind === "gh_archive" && target.trim().length > 0 && !ghArchivePattern.test(target.trim())) {
-      toast({
-        title: "Invalid GH Archive filter",
-        description: "Use comma-separated repo:/event:/org: pairs, e.g. repo:torvalds/,event:PullRequestEvent",
-        variant: "destructive",
-      });
+      toast({ title: "Invalid GH Archive filter", description: "Use comma-separated repo:/event:/org: pairs.", variant: "destructive" });
       return;
     }
-
+    if (kind === "stream" && !/^https?:\/\/.+/.test(target.trim())) {
+      toast({ title: "Invalid stream URL", description: "Must be a fully-qualified HTTP/HTTPS URL.", variant: "destructive" });
+      return;
+    }
     try {
-      await createSource.mutateAsync({
-        data: { kind, target: target.trim(), label: label || undefined }
-      });
+      await createSource.mutateAsync({ data: { kind, target: target.trim(), label: label || undefined } });
       setTarget("");
       setLabel("");
       queryClient.invalidateQueries({ queryKey: getListEphemeroiSourcesQueryKey() });
       toast({ title: "Source added successfully" });
-    } catch (err) {
-      toast({ 
-        title: "Failed to add source", 
-        variant: "destructive" 
-      });
+    } catch {
+      toast({ title: "Failed to add source", variant: "destructive" });
     }
   };
 
@@ -157,37 +139,64 @@ export default function Sources() {
     try {
       await deleteSource.mutateAsync({ id });
       queryClient.invalidateQueries({ queryKey: getListEphemeroiSourcesQueryKey() });
-    } catch (err) {
-      toast({ 
-        title: "Failed to delete source", 
-        variant: "destructive" 
-      });
+    } catch {
+      toast({ title: "Failed to delete source", variant: "destructive" });
+    }
+  };
+
+  const handleStream = async (id: number) => {
+    setStreamingId(id);
+    try {
+      const result = await streamSource.mutateAsync({ id });
+      const { addedCount, bytesRead, errors } = result;
+      if (errors.length > 0 && addedCount === 0) {
+        toast({
+          title: "Stream ingest failed",
+          description: errors[0] ?? "Unknown error",
+          variant: "destructive",
+        });
+      } else {
+        const kb = (bytesRead / 1024).toFixed(1);
+        toast({
+          title: `Stream ingest complete`,
+          description: `${addedCount} observation${addedCount !== 1 ? "s" : ""} added · ${kb} KB read${errors.length > 0 ? ` · ${errors.length} warning(s)` : ""}`,
+        });
+        queryClient.invalidateQueries({ queryKey: getListEphemeroiSourcesQueryKey() });
+      }
+    } catch {
+      toast({ title: "Streaming ingest failed", variant: "destructive" });
+    } finally {
+      setStreamingId(null);
     }
   };
 
   const getIcon = (sourceKind: string) => {
-    switch(sourceKind) {
-      case 'rss': return <Radio className="w-4 h-4" />;
-      case 'search': return <Search className="w-4 h-4" />;
-      case 'github': return <Github className="w-4 h-4" />;
-      case 'github_user': return <Users className="w-4 h-4" />;
-      case 'gh_archive': return <Database className="w-4 h-4" />;
+    switch (sourceKind) {
+      case "rss": return <Radio className="w-4 h-4" />;
+      case "search": return <Search className="w-4 h-4" />;
+      case "github": return <Github className="w-4 h-4" />;
+      case "github_user": return <Users className="w-4 h-4" />;
+      case "gh_archive": return <Database className="w-4 h-4" />;
+      case "stream": return <Rss className="w-4 h-4" />;
       default: return <LinkIcon className="w-4 h-4" />;
     }
   };
 
   const targetLabel =
-    kind === 'search' ? 'Search Query'
-      : kind === 'github' ? 'GitHub Repo'
-      : kind === 'github_user' ? 'GitHub User / Org'
-      : kind === 'gh_archive' ? 'Filter Expression'
-      : 'URL';
+    kind === "search" ? "Search Query"
+      : kind === "github" ? "GitHub Repo"
+      : kind === "github_user" ? "GitHub User / Org"
+      : kind === "gh_archive" ? "Filter Expression"
+      : kind === "stream" ? "Stream URL (NDJSON or newline-delimited text)"
+      : "URL";
+
   const targetPlaceholder =
-    kind === 'search' ? 'e.g. "artificial intelligence advances"'
-      : kind === 'github' ? 'owner/repo or https://github.com/owner/repo'
-      : kind === 'github_user' ? 'username or https://github.com/username'
-      : kind === 'gh_archive' ? 'repo:torvalds/,event:PullRequestEvent'
-      : 'https://...';
+    kind === "search" ? 'e.g. "artificial intelligence advances"'
+      : kind === "github" ? "owner/repo or https://github.com/owner/repo"
+      : kind === "github_user" ? "username or https://github.com/username"
+      : kind === "gh_archive" ? "repo:torvalds/,event:PullRequestEvent"
+      : kind === "stream" ? "https://example.com/events.ndjson"
+      : "https://...";
 
   if (isLoading) {
     return (
@@ -210,7 +219,9 @@ export default function Sources() {
       <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle>Add Source</CardTitle>
-          <CardDescription>Configure a new RSS feed, URL, recurring search query, GitHub repo, or whole GitHub user/org.</CardDescription>
+          <CardDescription>
+            Configure a new RSS feed, URL, recurring search query, GitHub repo, GitHub user/org, GH Archive firehose, or a streaming NDJSON endpoint.
+          </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleCreate} className="flex flex-col md:flex-row gap-4 items-end">
@@ -227,45 +238,48 @@ export default function Sources() {
                   <SelectItem value="github">GitHub Repo</SelectItem>
                   <SelectItem value="github_user">GitHub User / Org</SelectItem>
                   <SelectItem value="gh_archive">GH Archive (firehose)</SelectItem>
+                  <SelectItem value="stream">Streaming Endpoint</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             
             <div className="space-y-2 flex-[2]">
-              <label className="text-xs font-medium text-muted-foreground">
-                {targetLabel}
-              </label>
+              <label className="text-xs font-medium text-muted-foreground">{targetLabel}</label>
               <Input 
                 value={target}
                 onChange={e => setTarget(e.target.value)}
                 placeholder={targetPlaceholder}
                 className="bg-background"
                 required
-                aria-invalid={githubInvalid || githubUserInvalid || ghArchiveInvalid}
+                aria-invalid={githubInvalid || githubUserInvalid || ghArchiveInvalid || streamUrlInvalid}
               />
               {githubInvalid && (
-                <p className="text-xs text-destructive">
-                  Use the form <code>owner/repo</code> or a github.com URL.
-                </p>
+                <p className="text-xs text-destructive">Use the form <code>owner/repo</code> or a github.com URL.</p>
               )}
               {githubUserInvalid && (
-                <p className="text-xs text-destructive">
-                  Use a github username/org name or a <code>github.com/&lt;user&gt;</code> URL.
-                </p>
+                <p className="text-xs text-destructive">Use a github username/org name or a <code>github.com/&lt;user&gt;</code> URL.</p>
               )}
               {ghArchiveInvalid && (
                 <p className="text-xs text-destructive">
-                  Use comma-separated <code>key:value</code> pairs where key is <code>repo</code>, <code>event</code>, or <code>org</code> (e.g. <code>event:ReleaseEvent,org:nodejs</code>).
+                  Use comma-separated <code>key:value</code> pairs where key is <code>repo</code>, <code>event</code>, or <code>org</code>.
                 </p>
               )}
-              {kind === 'github_user' && !githubUserInvalid && (
+              {streamUrlInvalid && (
+                <p className="text-xs text-destructive">Must be a fully-qualified HTTP or HTTPS URL.</p>
+              )}
+              {kind === "github_user" && !githubUserInvalid && (
                 <p className="text-xs text-muted-foreground">
                   Watches up to 30 of this user's most-recently-pushed public repos (skips forks &amp; archived).
                 </p>
               )}
-              {kind === 'gh_archive' && !ghArchiveInvalid && (
+              {kind === "gh_archive" && !ghArchiveInvalid && (
                 <p className="text-xs text-muted-foreground">
                   Filter narrows the hourly GH event firehose. AND-combined; at least one filter required.
+                </p>
+              )}
+              {kind === "stream" && !streamUrlInvalid && (
+                <p className="text-xs text-muted-foreground">
+                  Consumes NDJSON or newline-delimited text. Use "Stream Now" on the source card to trigger ingest on demand.
                 </p>
               )}
             </div>
@@ -307,7 +321,7 @@ export default function Sources() {
                 <Card className="bg-card/50 border-border/50 overflow-hidden">
                   <div className="flex flex-col md:flex-row">
                     <div className="p-4 flex-1 flex items-start gap-4">
-                      <div className={`p-2 rounded-md ${source.active ? 'bg-primary/10 text-primary' : 'bg-muted text-muted-foreground'}`}>
+                      <div className={`p-2 rounded-md ${source.active ? "bg-primary/10 text-primary" : "bg-muted text-muted-foreground"}`}>
                         {getIcon(source.kind)}
                       </div>
                       <div className="flex-1 min-w-0">
@@ -334,7 +348,7 @@ export default function Sources() {
                             className="text-xs text-muted-foreground/80 italic mt-1 line-clamp-2"
                             title={source.autoAddedReason}
                           >
-                            “{source.autoAddedReason}”
+                            "{source.autoAddedReason}"
                           </p>
                         )}
                       </div>
@@ -356,7 +370,7 @@ export default function Sources() {
                         <div className="text-xs">
                           <div className="text-muted-foreground mb-1">Last polled</div>
                           <div className="font-mono text-foreground">
-                            {source.lastPolledAt ? formatDistanceToNow(new Date(source.lastPolledAt)) + ' ago' : 'Never'}
+                            {source.lastPolledAt ? formatDistanceToNow(new Date(source.lastPolledAt)) + " ago" : "Never"}
                           </div>
                           {source.lastError && (
                             <div className="text-destructive mt-1 flex items-center gap-1 line-clamp-1" title={source.lastError}>
@@ -365,15 +379,34 @@ export default function Sources() {
                           )}
                         </div>
 
-                        <Button 
-                          variant="ghost" 
-                          size="icon" 
-                          className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
-                          onClick={() => handleDelete(source.id)}
-                          disabled={deleteSource.isPending}
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          {source.kind === "stream" && (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="text-xs h-7 gap-1"
+                              onClick={() => handleStream(source.id)}
+                              disabled={streamingId === source.id}
+                              title="Trigger a streaming ingest pass on demand"
+                            >
+                              {streamingId === source.id ? (
+                                <RefreshCw className="w-3 h-3 animate-spin" />
+                              ) : (
+                                <Zap className="w-3 h-3" />
+                              )}
+                              {streamingId === source.id ? "Streaming…" : "Stream Now"}
+                            </Button>
+                          )}
+                          <Button 
+                            variant="ghost" 
+                            size="icon" 
+                            className="text-muted-foreground hover:text-destructive hover:bg-destructive/10"
+                            onClick={() => handleDelete(source.id)}
+                            disabled={deleteSource.isPending}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </Button>
+                        </div>
                       </div>
                     </div>
                   </div>
