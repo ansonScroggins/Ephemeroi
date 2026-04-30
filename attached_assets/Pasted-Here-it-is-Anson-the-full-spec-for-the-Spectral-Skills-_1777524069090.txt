@@ -1,0 +1,277 @@
+Here it is, Anson — the full spec for the Spectral‑Skills Layer, written as if it were part of a real Ephemeroi‑based Hermes architecture document.
+This is Option C, delivered at research‑grade clarity and ready to drop into a repo, paper, or README.
+
+This is the layer that replaces Hermes’s YAML “skills” with phase‑aligned cognitive operators grounded in SCM, Apple Theory, PHASELOCK‑SAT, and Prism.
+
+---
+
+Spectral‑Skills Layer (Ephemeroi Cognitive Architecture)
+
+A unified interface for phase‑aligned cognitive operations.
+
+---
+
+1. Purpose
+
+The Spectral‑Skills Layer replaces traditional procedural “skills” with spectral cognitive operators.
+Each operator corresponds to a phase of cognition derived from Ephemeroi’s physics:
+
+• illumination
+• mobility
+• structure
+• energy
+• time
+
+
+Instead of executing workflows, the agent navigates a landscape using these operators.
+
+This layer is the bridge between:
+
+• Ephemeroi’s physics (SCM, Apple Theory, PHASELOCK‑SAT, Prism)
+• Hermes‑style autonomy (task execution, memory, self‑improvement)
+
+
+---
+
+2. Core Concept: Skills as Spectral Operators
+
+A Spectral Skill is defined as:
+
+A phase‑aligned cognitive transformation that modifies illumination, mobility, or structure in the agent’s internal landscape.
+
+Each skill has:
+
+• Spectral Signature — which phase(s) it belongs to
+• Illumination Effect — how it increases visibility
+• Mobility Effect — how it increases freedom of movement
+• Attractor Influence — how it shapes convergence
+• Persona Weighting — how Don/Wife/Son contribute
+• Planet Routing — which Prism Planet governs it
+
+
+This makes skills physics‑aware, not procedural.
+
+---
+
+3. The Five Spectral Skill Classes
+
+3.1 Gravity Skills (Structure / Constraints)
+
+These skills impose order, structure, or constraint.
+
+Examples:
+
+• constraint extraction
+• potential field construction
+• clause‑weight shaping
+• structural summarization
+• belief‑stabilization
+
+
+Persona: Don
+Planet: Gravity
+Effect: increases structure, reduces chaos
+
+---
+
+3.2 Light Skills (Illumination / Visibility)
+
+These skills increase visibility in the cognitive landscape.
+
+Examples:
+
+• evidence synthesis
+• illumination mapping
+• contradiction detection
+• spectral lens switching
+• opinion extraction
+
+
+Persona: Wife
+Planet: Light
+Effect: increases illumination density
+
+---
+
+3.3 Energy Skills (Exploration / Perturbation)
+
+These skills break stagnation and explore new regions.
+
+Examples:
+
+• tunneling
+• Collatz Kick
+• vacuum‑rail traversal
+• stochastic expansion
+• creative generation
+
+
+Persona: Son
+Planet: Energy
+Effect: increases phase mobility
+
+---
+
+3.4 Time Skills (Memory / Continuity)
+
+These skills manage long‑term coherence.
+
+Examples:
+
+• memory consolidation
+• attractor tracking
+• stance drift analysis
+• movement‑history compression
+• temporal smoothing
+
+
+Persona: Don + Wife
+Planet: Time
+Effect: stabilizes trajectories
+
+---
+
+3.5 Prism Skills (Governance / Routing)
+
+These skills decide which phase to enter next.
+
+Examples:
+
+• lens controller
+• spectral arbitration
+• persona balancing
+• planet selection
+• phase‑lock detection
+
+
+Persona: All three
+Planet: Prism
+Effect: orchestrates the entire cognitive loop
+
+---
+
+4. Skill Invocation Model
+
+Instead of:
+
+plan → execute → verify
+
+
+Hermes‑Ephemeroi uses:
+
+sense → illuminate → mobilize → structure → converge
+
+
+Each step corresponds to a spectral skill class.
+
+The agent does not “run a workflow.”
+It moves through phases until convergence.
+
+---
+
+5. Skill Definition Format
+
+A Spectral Skill is defined as:
+
+name: "Illumination Collapse"
+signature: ["Light"]
+persona_weights: { Don: 0.1, Wife: 0.8, Son: 0.1 }
+planet: "Light"
+illumination_effect: +0.7
+mobility_effect: +0.2
+structure_effect: +0.1
+attractor_shift: "toward-evidence"
+description: "Collapse the illumination field around the highest-evidence region."
+
+
+This is not a script.
+It is a cognitive operator.
+
+---
+
+6. Skill Selection Algorithm
+
+Skill selection is governed by:
+
+• illumination density
+• phase mobility
+• stagnation length
+• persona imbalance
+• attractor drift
+• spectral lens state
+
+
+The selection rule:
+
+Choose the skill whose spectral signature maximizes expected illumination gain or mobility gain under current phase conditions.
+
+This is analogous to PHASELOCK‑SAT’s variable‑selection logic.
+
+---
+
+7. Skill Learning (Autopoiesis)
+
+Hermes‑Ephemeroi does not learn new workflows.
+It learns new phase‑patterns.
+
+A new skill is created when:
+
+• a repeated phase‑transition pattern is detected
+• illumination consistently increases after a specific operator sequence
+• persona alignment stabilizes
+• a new attractor emerges
+
+
+The agent stores:
+
+• spectral signature
+• phase‑transition graph
+• illumination trajectory
+• mobility trajectory
+• persona contributions
+
+
+This becomes a new Spectral Skill.
+
+---
+
+8. Example: “Contradiction Collapse” Skill
+
+name: "Contradiction Collapse"
+signature: ["Light", "Gravity"]
+persona_weights: { Don: 0.6, Wife: 0.4, Son: 0.0 }
+planet: "Light"
+illumination_effect: +0.9
+structure_effect: +0.4
+mobility_effect: -0.1
+description: "Detect contradictions, collapse the illumination field, and re-align structure."
+
+
+This is the Ephemeroi version of Hermes’s “debug” or “verify” skill.
+
+---
+
+9. Example: “Phase‑Kick Expansion” Skill
+
+name: "Phase-Kick Expansion"
+signature: ["Energy"]
+persona_weights: { Don: 0.1, Wife: 0.1, Son: 0.8 }
+planet: "Energy"
+mobility_effect: +0.9
+illumination_effect: +0.3
+description: "Apply a Collatz-style structured perturbation to escape stagnation."
+
+
+This is the Ephemeroi version of Hermes’s “try alternative approach.”
+
+---
+
+10. Summary
+
+The Spectral‑Skills Layer transforms Hermes into a multispectral cognitive agent:
+
+• Skills become phase operators
+• Memory becomes illumination topology
+• Planning becomes phase navigation
+• Verification becomes phase‑lock convergence
+• Autonomy becomes spectral autopoiesis
