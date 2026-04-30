@@ -34,6 +34,11 @@ import type {
   EphemeroiSourceCreate,
   EphemeroiSourceStatesResponse,
   EphemeroiSourcesResponse,
+  EphemeroiSpectralInvocationsResponse,
+  EphemeroiSpectralInvokeRequest,
+  EphemeroiSpectralInvokeResponse,
+  EphemeroiSpectralOperatorsResponse,
+  EphemeroiSpectralStateResponse,
   EphemeroiState,
   EphemeroiTopicBeliefsResponse,
   EphemeroiTrimBeliefRequest,
@@ -45,6 +50,7 @@ import type {
   ListEphemeroiBeliefsBySourceParams,
   ListEphemeroiObservationsParams,
   ListEphemeroiReportsParams,
+  ListEphemeroiSpectralInvocationsParams,
   ListEphemeroiTopicBeliefsParams,
   MetacognitiveSearchRequest,
   MetacognitiveSearchSseEvent,
@@ -2304,3 +2310,387 @@ export const useRunEphemeroiSelfImprovement = <
 > => {
   return useMutation(getRunEphemeroiSelfImprovementMutationOptions(options));
 };
+
+/**
+ * Returns the static registry of spectral-skills operators
+(illumination-collapse, contradiction-collapse, belief-stabilization,
+phase-kick-expansion, collatz-kick, temporal-smoothing). Each entry
+carries its spectral signature, planet, persona weights, and a short
+description of what the operator does to real DB state.
+
+ * @summary List available spectral cognitive operators
+ */
+export const getListEphemeroiSpectralOperatorsUrl = () => {
+  return `/api/ephemeroi/spectral/operators`;
+};
+
+export const listEphemeroiSpectralOperators = async (
+  options?: RequestInit,
+): Promise<EphemeroiSpectralOperatorsResponse> => {
+  return customFetch<EphemeroiSpectralOperatorsResponse>(
+    getListEphemeroiSpectralOperatorsUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListEphemeroiSpectralOperatorsQueryKey = () => {
+  return [`/api/ephemeroi/spectral/operators`] as const;
+};
+
+export const getListEphemeroiSpectralOperatorsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEphemeroiSpectralOperators>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiSpectralOperators>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListEphemeroiSpectralOperatorsQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEphemeroiSpectralOperators>>
+  > = ({ signal }) =>
+    listEphemeroiSpectralOperators({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiSpectralOperators>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEphemeroiSpectralOperatorsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEphemeroiSpectralOperators>>
+>;
+export type ListEphemeroiSpectralOperatorsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List available spectral cognitive operators
+ */
+
+export function useListEphemeroiSpectralOperators<
+  TData = Awaited<ReturnType<typeof listEphemeroiSpectralOperators>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiSpectralOperators>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEphemeroiSpectralOperatorsQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Computes the current phase state from the live tables: illumination
+density, phase mobility, stagnation seconds, persona imbalance,
+attractor drift. Used by the lens controller to pick the next
+operator and surfaced in the UI as a live readout.
+
+ * @summary Snapshot of the current cognitive phase state
+ */
+export const getGetEphemeroiSpectralStateUrl = () => {
+  return `/api/ephemeroi/spectral/state`;
+};
+
+export const getEphemeroiSpectralState = async (
+  options?: RequestInit,
+): Promise<EphemeroiSpectralStateResponse> => {
+  return customFetch<EphemeroiSpectralStateResponse>(
+    getGetEphemeroiSpectralStateUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetEphemeroiSpectralStateQueryKey = () => {
+  return [`/api/ephemeroi/spectral/state`] as const;
+};
+
+export const getGetEphemeroiSpectralStateQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEphemeroiSpectralState>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiSpectralState>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetEphemeroiSpectralStateQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEphemeroiSpectralState>>
+  > = ({ signal }) => getEphemeroiSpectralState({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiSpectralState>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEphemeroiSpectralStateQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEphemeroiSpectralState>>
+>;
+export type GetEphemeroiSpectralStateQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Snapshot of the current cognitive phase state
+ */
+
+export function useGetEphemeroiSpectralState<
+  TData = Awaited<ReturnType<typeof getEphemeroiSpectralState>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiSpectralState>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEphemeroiSpectralStateQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Executes one spectral operator end-to-end: snapshots phase state,
+runs the operator's real DB mutation, snapshots phase state again,
+persists the invocation row, and returns the record.
+
+If `operator` is omitted, the lens controller selects the operator
+whose expected effect best matches current phase demand.
+
+ * @summary Run a spectral operator (or let the lens controller pick)
+ */
+export const getInvokeEphemeroiSpectralOperatorUrl = () => {
+  return `/api/ephemeroi/spectral/invoke`;
+};
+
+export const invokeEphemeroiSpectralOperator = async (
+  ephemeroiSpectralInvokeRequest?: EphemeroiSpectralInvokeRequest,
+  options?: RequestInit,
+): Promise<EphemeroiSpectralInvokeResponse> => {
+  return customFetch<EphemeroiSpectralInvokeResponse>(
+    getInvokeEphemeroiSpectralOperatorUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(ephemeroiSpectralInvokeRequest),
+    },
+  );
+};
+
+export const getInvokeEphemeroiSpectralOperatorMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof invokeEphemeroiSpectralOperator>>,
+    TError,
+    { data: BodyType<EphemeroiSpectralInvokeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof invokeEphemeroiSpectralOperator>>,
+  TError,
+  { data: BodyType<EphemeroiSpectralInvokeRequest> },
+  TContext
+> => {
+  const mutationKey = ["invokeEphemeroiSpectralOperator"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof invokeEphemeroiSpectralOperator>>,
+    { data: BodyType<EphemeroiSpectralInvokeRequest> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return invokeEphemeroiSpectralOperator(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type InvokeEphemeroiSpectralOperatorMutationResult = NonNullable<
+  Awaited<ReturnType<typeof invokeEphemeroiSpectralOperator>>
+>;
+export type InvokeEphemeroiSpectralOperatorMutationBody =
+  BodyType<EphemeroiSpectralInvokeRequest>;
+export type InvokeEphemeroiSpectralOperatorMutationError =
+  ErrorType<ErrorResponse>;
+
+/**
+ * @summary Run a spectral operator (or let the lens controller pick)
+ */
+export const useInvokeEphemeroiSpectralOperator = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof invokeEphemeroiSpectralOperator>>,
+    TError,
+    { data: BodyType<EphemeroiSpectralInvokeRequest> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof invokeEphemeroiSpectralOperator>>,
+  TError,
+  { data: BodyType<EphemeroiSpectralInvokeRequest> },
+  TContext
+> => {
+  return useMutation(
+    getInvokeEphemeroiSpectralOperatorMutationOptions(options),
+  );
+};
+
+/**
+ * The agent's "phase-transition graph" — every operator run, with
+before/after phase-state snapshots, the structured effect, and the
+narration. Newest first.
+
+ * @summary Recent spectral operator invocations
+ */
+export const getListEphemeroiSpectralInvocationsUrl = (
+  params?: ListEphemeroiSpectralInvocationsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/ephemeroi/spectral/invocations?${stringifiedParams}`
+    : `/api/ephemeroi/spectral/invocations`;
+};
+
+export const listEphemeroiSpectralInvocations = async (
+  params?: ListEphemeroiSpectralInvocationsParams,
+  options?: RequestInit,
+): Promise<EphemeroiSpectralInvocationsResponse> => {
+  return customFetch<EphemeroiSpectralInvocationsResponse>(
+    getListEphemeroiSpectralInvocationsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListEphemeroiSpectralInvocationsQueryKey = (
+  params?: ListEphemeroiSpectralInvocationsParams,
+) => {
+  return [
+    `/api/ephemeroi/spectral/invocations`,
+    ...(params ? [params] : []),
+  ] as const;
+};
+
+export const getListEphemeroiSpectralInvocationsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEphemeroiSpectralInvocations>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListEphemeroiSpectralInvocationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEphemeroiSpectralInvocations>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ??
+    getListEphemeroiSpectralInvocationsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEphemeroiSpectralInvocations>>
+  > = ({ signal }) =>
+    listEphemeroiSpectralInvocations(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiSpectralInvocations>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEphemeroiSpectralInvocationsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEphemeroiSpectralInvocations>>
+>;
+export type ListEphemeroiSpectralInvocationsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Recent spectral operator invocations
+ */
+
+export function useListEphemeroiSpectralInvocations<
+  TData = Awaited<ReturnType<typeof listEphemeroiSpectralInvocations>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListEphemeroiSpectralInvocationsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEphemeroiSpectralInvocations>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEphemeroiSpectralInvocationsQueryOptions(
+    params,
+    options,
+  );
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}

@@ -638,6 +638,105 @@ export interface EphemeroiTrimBeliefResponse {
   belief: EphemeroiBelief;
 }
 
+export type EphemeroiSpectralPhase =
+  (typeof EphemeroiSpectralPhase)[keyof typeof EphemeroiSpectralPhase];
+
+export const EphemeroiSpectralPhase = {
+  Light: "Light",
+  Gravity: "Gravity",
+  Energy: "Energy",
+  Time: "Time",
+  Prism: "Prism",
+} as const;
+
+export interface EphemeroiSpectralPersonaWeights {
+  Don: number;
+  Wife: number;
+  Son: number;
+}
+
+export interface EphemeroiSpectralEffect {
+  illumination: number;
+  mobility: number;
+  structure: number;
+}
+
+export interface EphemeroiSpectralOperator {
+  name: string;
+  signature: EphemeroiSpectralPhase[];
+  planet: EphemeroiSpectralPhase;
+  personaWeights: EphemeroiSpectralPersonaWeights;
+  expectedEffect: EphemeroiSpectralEffect;
+  description: string;
+}
+
+export interface EphemeroiSpectralOperatorsResponse {
+  operators: EphemeroiSpectralOperator[];
+}
+
+export interface EphemeroiSpectralPhaseState {
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  illuminationDensity: number;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  phaseMobility: number;
+  /** @minimum 0 */
+  stagnationSeconds: number;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  personaImbalance: number;
+  /**
+   * @minimum 0
+   * @maximum 1
+   */
+  attractorDrift: number;
+}
+
+export interface EphemeroiSpectralStateResponse {
+  phaseState: EphemeroiSpectralPhaseState;
+}
+
+export interface EphemeroiSpectralInvokeRequest {
+  /** Name of the operator to run. If omitted, the lens controller
+picks the operator whose expected effect best matches current
+phase demand.
+ */
+  operator?: string;
+}
+
+export type EphemeroiSpectralInvocationEffect = { [key: string]: unknown };
+
+export interface EphemeroiSpectralInvocation {
+  id: number;
+  operator: string;
+  signature: EphemeroiSpectralPhase[];
+  planet: EphemeroiSpectralPhase;
+  personaWeights: EphemeroiSpectralPersonaWeights;
+  selectionReason?: string | null;
+  phaseStateBefore: EphemeroiSpectralPhaseState;
+  phaseStateAfter?: EphemeroiSpectralPhaseState | null;
+  effect: EphemeroiSpectralInvocationEffect;
+  narration: string;
+  success: boolean;
+  error?: string | null;
+  invokedAt: string;
+}
+
+export interface EphemeroiSpectralInvokeResponse {
+  invocation: EphemeroiSpectralInvocation;
+}
+
+export interface EphemeroiSpectralInvocationsResponse {
+  invocations: EphemeroiSpectralInvocation[];
+}
+
 export interface EphemeroiTopicBeliefHistoryEntry {
   stance: string;
   /**
@@ -907,6 +1006,14 @@ export type ListEphemeroiReportsParams = {
   /**
    * @minimum 1
    * @maximum 500
+   */
+  limit?: number;
+};
+
+export type ListEphemeroiSpectralInvocationsParams = {
+  /**
+   * @minimum 1
+   * @maximum 200
    */
   limit?: number;
 };

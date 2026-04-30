@@ -13,6 +13,7 @@ import TopicBeliefs from "@/pages/topic-beliefs";
 import Contradictions from "@/pages/contradictions";
 import Reports from "@/pages/reports";
 import Settings from "@/pages/settings";
+import Spectral from "@/pages/spectral";
 
 const queryClient = new QueryClient();
 
@@ -26,6 +27,7 @@ function Router() {
         <Route path="/topic-beliefs" component={TopicBeliefs} />
         <Route path="/contradictions" component={Contradictions} />
         <Route path="/reports" component={Reports} />
+        <Route path="/spectral" component={Spectral} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

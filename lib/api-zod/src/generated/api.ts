@@ -1244,3 +1244,380 @@ export const RunEphemeroiSelfImprovementResponse = zod
       .describe("Human-readable failure reason. Null on success."),
   })
   .describe("Outcome of one self-improvement attempt.");
+
+/**
+ * Returns the static registry of spectral-skills operators
+(illumination-collapse, contradiction-collapse, belief-stabilization,
+phase-kick-expansion, collatz-kick, temporal-smoothing). Each entry
+carries its spectral signature, planet, persona weights, and a short
+description of what the operator does to real DB state.
+
+ * @summary List available spectral cognitive operators
+ */
+export const ListEphemeroiSpectralOperatorsResponse = zod.object({
+  operators: zod.array(
+    zod.object({
+      name: zod.string(),
+      signature: zod.array(
+        zod.enum(["Light", "Gravity", "Energy", "Time", "Prism"]),
+      ),
+      planet: zod.enum(["Light", "Gravity", "Energy", "Time", "Prism"]),
+      personaWeights: zod.object({
+        Don: zod.number(),
+        Wife: zod.number(),
+        Son: zod.number(),
+      }),
+      expectedEffect: zod.object({
+        illumination: zod.number(),
+        mobility: zod.number(),
+        structure: zod.number(),
+      }),
+      description: zod.string(),
+    }),
+  ),
+});
+
+/**
+ * Computes the current phase state from the live tables: illumination
+density, phase mobility, stagnation seconds, persona imbalance,
+attractor drift. Used by the lens controller to pick the next
+operator and surfaced in the UI as a live readout.
+
+ * @summary Snapshot of the current cognitive phase state
+ */
+export const getEphemeroiSpectralStateResponsePhaseStateIlluminationDensityMin = 0;
+export const getEphemeroiSpectralStateResponsePhaseStateIlluminationDensityMax = 1;
+
+export const getEphemeroiSpectralStateResponsePhaseStatePhaseMobilityMin = 0;
+export const getEphemeroiSpectralStateResponsePhaseStatePhaseMobilityMax = 1;
+
+export const getEphemeroiSpectralStateResponsePhaseStateStagnationSecondsMin = 0;
+
+export const getEphemeroiSpectralStateResponsePhaseStatePersonaImbalanceMin = 0;
+export const getEphemeroiSpectralStateResponsePhaseStatePersonaImbalanceMax = 1;
+
+export const getEphemeroiSpectralStateResponsePhaseStateAttractorDriftMin = 0;
+export const getEphemeroiSpectralStateResponsePhaseStateAttractorDriftMax = 1;
+
+export const GetEphemeroiSpectralStateResponse = zod.object({
+  phaseState: zod.object({
+    illuminationDensity: zod
+      .number()
+      .min(getEphemeroiSpectralStateResponsePhaseStateIlluminationDensityMin)
+      .max(getEphemeroiSpectralStateResponsePhaseStateIlluminationDensityMax),
+    phaseMobility: zod
+      .number()
+      .min(getEphemeroiSpectralStateResponsePhaseStatePhaseMobilityMin)
+      .max(getEphemeroiSpectralStateResponsePhaseStatePhaseMobilityMax),
+    stagnationSeconds: zod
+      .number()
+      .min(getEphemeroiSpectralStateResponsePhaseStateStagnationSecondsMin),
+    personaImbalance: zod
+      .number()
+      .min(getEphemeroiSpectralStateResponsePhaseStatePersonaImbalanceMin)
+      .max(getEphemeroiSpectralStateResponsePhaseStatePersonaImbalanceMax),
+    attractorDrift: zod
+      .number()
+      .min(getEphemeroiSpectralStateResponsePhaseStateAttractorDriftMin)
+      .max(getEphemeroiSpectralStateResponsePhaseStateAttractorDriftMax),
+  }),
+});
+
+/**
+ * Executes one spectral operator end-to-end: snapshots phase state,
+runs the operator's real DB mutation, snapshots phase state again,
+persists the invocation row, and returns the record.
+
+If `operator` is omitted, the lens controller selects the operator
+whose expected effect best matches current phase demand.
+
+ * @summary Run a spectral operator (or let the lens controller pick)
+ */
+export const InvokeEphemeroiSpectralOperatorBody = zod.object({
+  operator: zod
+    .string()
+    .optional()
+    .describe(
+      "Name of the operator to run. If omitted, the lens controller\npicks the operator whose expected effect best matches current\nphase demand.\n",
+    ),
+});
+
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforeIlluminationDensityMin = 0;
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforeIlluminationDensityMax = 1;
+
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforePhaseMobilityMin = 0;
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforePhaseMobilityMax = 1;
+
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforeStagnationSecondsMin = 0;
+
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforePersonaImbalanceMin = 0;
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforePersonaImbalanceMax = 1;
+
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforeAttractorDriftMin = 0;
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforeAttractorDriftMax = 1;
+
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOneIlluminationDensityMin = 0;
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOneIlluminationDensityMax = 1;
+
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOnePhaseMobilityMin = 0;
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOnePhaseMobilityMax = 1;
+
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOneStagnationSecondsMin = 0;
+
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOnePersonaImbalanceMin = 0;
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOnePersonaImbalanceMax = 1;
+
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOneAttractorDriftMin = 0;
+export const invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOneAttractorDriftMax = 1;
+
+export const InvokeEphemeroiSpectralOperatorResponse = zod.object({
+  invocation: zod.object({
+    id: zod.number(),
+    operator: zod.string(),
+    signature: zod.array(
+      zod.enum(["Light", "Gravity", "Energy", "Time", "Prism"]),
+    ),
+    planet: zod.enum(["Light", "Gravity", "Energy", "Time", "Prism"]),
+    personaWeights: zod.object({
+      Don: zod.number(),
+      Wife: zod.number(),
+      Son: zod.number(),
+    }),
+    selectionReason: zod.string().nullish(),
+    phaseStateBefore: zod.object({
+      illuminationDensity: zod
+        .number()
+        .min(
+          invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforeIlluminationDensityMin,
+        )
+        .max(
+          invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforeIlluminationDensityMax,
+        ),
+      phaseMobility: zod
+        .number()
+        .min(
+          invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforePhaseMobilityMin,
+        )
+        .max(
+          invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforePhaseMobilityMax,
+        ),
+      stagnationSeconds: zod
+        .number()
+        .min(
+          invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforeStagnationSecondsMin,
+        ),
+      personaImbalance: zod
+        .number()
+        .min(
+          invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforePersonaImbalanceMin,
+        )
+        .max(
+          invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforePersonaImbalanceMax,
+        ),
+      attractorDrift: zod
+        .number()
+        .min(
+          invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforeAttractorDriftMin,
+        )
+        .max(
+          invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateBeforeAttractorDriftMax,
+        ),
+    }),
+    phaseStateAfter: zod
+      .object({
+        illuminationDensity: zod
+          .number()
+          .min(
+            invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOneIlluminationDensityMin,
+          )
+          .max(
+            invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOneIlluminationDensityMax,
+          ),
+        phaseMobility: zod
+          .number()
+          .min(
+            invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOnePhaseMobilityMin,
+          )
+          .max(
+            invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOnePhaseMobilityMax,
+          ),
+        stagnationSeconds: zod
+          .number()
+          .min(
+            invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOneStagnationSecondsMin,
+          ),
+        personaImbalance: zod
+          .number()
+          .min(
+            invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOnePersonaImbalanceMin,
+          )
+          .max(
+            invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOnePersonaImbalanceMax,
+          ),
+        attractorDrift: zod
+          .number()
+          .min(
+            invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOneAttractorDriftMin,
+          )
+          .max(
+            invokeEphemeroiSpectralOperatorResponseInvocationPhaseStateAfterOneAttractorDriftMax,
+          ),
+      })
+      .nullish(),
+    effect: zod.record(zod.string(), zod.unknown()),
+    narration: zod.string(),
+    success: zod.boolean(),
+    error: zod.string().nullish(),
+    invokedAt: zod.coerce.date(),
+  }),
+});
+
+/**
+ * The agent's "phase-transition graph" — every operator run, with
+before/after phase-state snapshots, the structured effect, and the
+narration. Newest first.
+
+ * @summary Recent spectral operator invocations
+ */
+export const listEphemeroiSpectralInvocationsQueryLimitDefault = 50;
+export const listEphemeroiSpectralInvocationsQueryLimitMax = 200;
+
+export const ListEphemeroiSpectralInvocationsQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listEphemeroiSpectralInvocationsQueryLimitMax)
+    .default(listEphemeroiSpectralInvocationsQueryLimitDefault),
+});
+
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforeIlluminationDensityMin = 0;
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforeIlluminationDensityMax = 1;
+
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforePhaseMobilityMin = 0;
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforePhaseMobilityMax = 1;
+
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforeStagnationSecondsMin = 0;
+
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforePersonaImbalanceMin = 0;
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforePersonaImbalanceMax = 1;
+
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforeAttractorDriftMin = 0;
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforeAttractorDriftMax = 1;
+
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOneIlluminationDensityMin = 0;
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOneIlluminationDensityMax = 1;
+
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOnePhaseMobilityMin = 0;
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOnePhaseMobilityMax = 1;
+
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOneStagnationSecondsMin = 0;
+
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOnePersonaImbalanceMin = 0;
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOnePersonaImbalanceMax = 1;
+
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOneAttractorDriftMin = 0;
+export const listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOneAttractorDriftMax = 1;
+
+export const ListEphemeroiSpectralInvocationsResponse = zod.object({
+  invocations: zod.array(
+    zod.object({
+      id: zod.number(),
+      operator: zod.string(),
+      signature: zod.array(
+        zod.enum(["Light", "Gravity", "Energy", "Time", "Prism"]),
+      ),
+      planet: zod.enum(["Light", "Gravity", "Energy", "Time", "Prism"]),
+      personaWeights: zod.object({
+        Don: zod.number(),
+        Wife: zod.number(),
+        Son: zod.number(),
+      }),
+      selectionReason: zod.string().nullish(),
+      phaseStateBefore: zod.object({
+        illuminationDensity: zod
+          .number()
+          .min(
+            listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforeIlluminationDensityMin,
+          )
+          .max(
+            listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforeIlluminationDensityMax,
+          ),
+        phaseMobility: zod
+          .number()
+          .min(
+            listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforePhaseMobilityMin,
+          )
+          .max(
+            listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforePhaseMobilityMax,
+          ),
+        stagnationSeconds: zod
+          .number()
+          .min(
+            listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforeStagnationSecondsMin,
+          ),
+        personaImbalance: zod
+          .number()
+          .min(
+            listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforePersonaImbalanceMin,
+          )
+          .max(
+            listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforePersonaImbalanceMax,
+          ),
+        attractorDrift: zod
+          .number()
+          .min(
+            listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforeAttractorDriftMin,
+          )
+          .max(
+            listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateBeforeAttractorDriftMax,
+          ),
+      }),
+      phaseStateAfter: zod
+        .object({
+          illuminationDensity: zod
+            .number()
+            .min(
+              listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOneIlluminationDensityMin,
+            )
+            .max(
+              listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOneIlluminationDensityMax,
+            ),
+          phaseMobility: zod
+            .number()
+            .min(
+              listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOnePhaseMobilityMin,
+            )
+            .max(
+              listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOnePhaseMobilityMax,
+            ),
+          stagnationSeconds: zod
+            .number()
+            .min(
+              listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOneStagnationSecondsMin,
+            ),
+          personaImbalance: zod
+            .number()
+            .min(
+              listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOnePersonaImbalanceMin,
+            )
+            .max(
+              listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOnePersonaImbalanceMax,
+            ),
+          attractorDrift: zod
+            .number()
+            .min(
+              listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOneAttractorDriftMin,
+            )
+            .max(
+              listEphemeroiSpectralInvocationsResponseInvocationsItemPhaseStateAfterOneAttractorDriftMax,
+            ),
+        })
+        .nullish(),
+      effect: zod.record(zod.string(), zod.unknown()),
+      narration: zod.string(),
+      success: zod.boolean(),
+      error: zod.string().nullish(),
+      invokedAt: zod.coerce.date(),
+    }),
+  ),
+});

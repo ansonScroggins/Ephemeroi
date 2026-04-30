@@ -597,6 +597,97 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/spectral/operators:
+    get:
+      operationId: listEphemeroiSpectralOperators
+      tags: [ephemeroi]
+      summary: List available spectral cognitive operators
+      description: |
+        Returns the static registry of spectral-skills operators
+        (illumination-collapse, contradiction-collapse, belief-stabilization,
+        phase-kick-expansion, collatz-kick, temporal-smoothing). Each entry
+        carries its spectral signature, planet, persona weights, and a short
+        description of what the operator does to real DB state.
+      responses:
+        "200":
+          description: Operator registry
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSpectralOperatorsResponse"
+  /ephemeroi/spectral/state:
+    get:
+      operationId: getEphemeroiSpectralState
+      tags: [ephemeroi]
+      summary: Snapshot of the current cognitive phase state
+      description: |
+        Computes the current phase state from the live tables: illumination
+        density, phase mobility, stagnation seconds, persona imbalance,
+        attractor drift. Used by the lens controller to pick the next
+        operator and surfaced in the UI as a live readout.
+      responses:
+        "200":
+          description: Phase state snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSpectralStateResponse"
+  /ephemeroi/spectral/invoke:
+    post:
+      operationId: invokeEphemeroiSpectralOperator
+      tags: [ephemeroi]
+      summary: Run a spectral operator (or let the lens controller pick)
+      description: |
+        Executes one spectral operator end-to-end: snapshots phase state,
+        runs the operator's real DB mutation, snapshots phase state again,
+        persists the invocation row, and returns the record.
+
+        If `operator` is omitted, the lens controller selects the operator
+        whose expected effect best matches current phase demand.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EphemeroiSpectralInvokeRequest"
+      responses:
+        "200":
+          description: Operator invocation record
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSpectralInvokeResponse"
+        "400":
+          description: Unknown operator
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+  /ephemeroi/spectral/invocations:
+    get:
+      operationId: listEphemeroiSpectralInvocations
+      tags: [ephemeroi]
+      summary: Recent spectral operator invocations
+      description: |
+        The agent's "phase-transition graph" — every operator run, with
+        before/after phase-state snapshots, the structured effect, and the
+        narration. Newest first.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        "200":
+          description: Recent invocations
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSpectralInvocationsResponse"
 components:
   schemas:
     HealthStatus:
@@ -1361,6 +1452,171 @@ components:
         belief:
           $ref: "#/components/schemas/EphemeroiBelief"
       required: [belief]
+
+    EphemeroiSpectralPhase:
+      type: string
+      enum: [Light, Gravity, Energy, Time, Prism]
+
+    EphemeroiSpectralPersonaWeights:
+      type: object
+      properties:
+        Don:
+          type: number
+        Wife:
+          type: number
+        Son:
+          type: number
+      required: [Don, Wife, Son]
+
+    EphemeroiSpectralEffect:
+      type: object
+      properties:
+        illumination:
+          type: number
+        mobility:
+          type: number
+        structure:
+          type: number
+      required: [illumination, mobility, structure]
+
+    EphemeroiSpectralOperator:
+      type: object
+      properties:
+        name:
+          type: string
+        signature:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiSpectralPhase"
+        planet:
+          $ref: "#/components/schemas/EphemeroiSpectralPhase"
+        personaWeights:
+          $ref: "#/components/schemas/EphemeroiSpectralPersonaWeights"
+        expectedEffect:
+          $ref: "#/components/schemas/EphemeroiSpectralEffect"
+        description:
+          type: string
+      required: [name, signature, planet, personaWeights, expectedEffect, description]
+
+    EphemeroiSpectralOperatorsResponse:
+      type: object
+      properties:
+        operators:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiSpectralOperator"
+      required: [operators]
+
+    EphemeroiSpectralPhaseState:
+      type: object
+      properties:
+        illuminationDensity:
+          type: number
+          minimum: 0
+          maximum: 1
+        phaseMobility:
+          type: number
+          minimum: 0
+          maximum: 1
+        stagnationSeconds:
+          type: integer
+          minimum: 0
+        personaImbalance:
+          type: number
+          minimum: 0
+          maximum: 1
+        attractorDrift:
+          type: number
+          minimum: 0
+          maximum: 1
+      required:
+        - illuminationDensity
+        - phaseMobility
+        - stagnationSeconds
+        - personaImbalance
+        - attractorDrift
+
+    EphemeroiSpectralStateResponse:
+      type: object
+      properties:
+        phaseState:
+          $ref: "#/components/schemas/EphemeroiSpectralPhaseState"
+      required: [phaseState]
+
+    EphemeroiSpectralInvokeRequest:
+      type: object
+      properties:
+        operator:
+          type: string
+          description: |
+            Name of the operator to run. If omitted, the lens controller
+            picks the operator whose expected effect best matches current
+            phase demand.
+
+    EphemeroiSpectralInvocation:
+      type: object
+      properties:
+        id:
+          type: integer
+        operator:
+          type: string
+        signature:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiSpectralPhase"
+        planet:
+          $ref: "#/components/schemas/EphemeroiSpectralPhase"
+        personaWeights:
+          $ref: "#/components/schemas/EphemeroiSpectralPersonaWeights"
+        selectionReason:
+          type: string
+          nullable: true
+        phaseStateBefore:
+          $ref: "#/components/schemas/EphemeroiSpectralPhaseState"
+        phaseStateAfter:
+          allOf:
+            - $ref: "#/components/schemas/EphemeroiSpectralPhaseState"
+          nullable: true
+        effect:
+          type: object
+          additionalProperties: true
+        narration:
+          type: string
+        success:
+          type: boolean
+        error:
+          type: string
+          nullable: true
+        invokedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - operator
+        - signature
+        - planet
+        - personaWeights
+        - phaseStateBefore
+        - effect
+        - narration
+        - success
+        - invokedAt
+
+    EphemeroiSpectralInvokeResponse:
+      type: object
+      properties:
+        invocation:
+          $ref: "#/components/schemas/EphemeroiSpectralInvocation"
+      required: [invocation]
+
+    EphemeroiSpectralInvocationsResponse:
+      type: object
+      properties:
+        invocations:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiSpectralInvocation"
+      required: [invocations]
 
     EphemeroiTopicBeliefHistoryEntry:
       type: object

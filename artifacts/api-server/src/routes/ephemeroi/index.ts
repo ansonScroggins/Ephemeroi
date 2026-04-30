@@ -22,6 +22,12 @@ import {
   RunEphemeroiSelfImprovementResponse,
   RunEphemeroiBiomimeticBody,
   RunEphemeroiBiomimeticResponse,
+  ListEphemeroiSpectralOperatorsResponse,
+  GetEphemeroiSpectralStateResponse,
+  InvokeEphemeroiSpectralOperatorBody,
+  InvokeEphemeroiSpectralOperatorResponse,
+  ListEphemeroiSpectralInvocationsQueryParams,
+  ListEphemeroiSpectralInvocationsResponse,
 } from "@workspace/api-zod";
 import { runSelfImprovement, SelfImproveInFlightError } from "./selfImprove";
 import { runBiomimetic } from "./biomimetic";
@@ -592,6 +598,131 @@ router.post("/ephemeroi/self-improve", async (_req, res) => {
     res.status(500).json({ error: "Self-improvement failed" });
   }
 });
+
+// ===== Spectral-Skills Layer =====
+
+router.get("/ephemeroi/spectral/operators", async (_req, res) => {
+  try {
+    const { listOperators } = await import("./spectral/operators");
+    const operators = listOperators().map((op) => ({
+      name: op.name,
+      signature: op.signature,
+      planet: op.planet,
+      personaWeights: op.personaWeights,
+      expectedEffect: op.expectedEffect,
+      description: op.description,
+    }));
+    res.json(
+      ListEphemeroiSpectralOperatorsResponse.parse({ operators }),
+    );
+  } catch (err) {
+    logger.error({ err }, "GET /ephemeroi/spectral/operators failed");
+    res.status(500).json({ error: "Failed to list spectral operators" });
+  }
+});
+
+router.get("/ephemeroi/spectral/state", async (_req, res) => {
+  try {
+    const { computePhaseState } = await import("./spectral/phaseState");
+    const phaseState = await computePhaseState();
+    res.json(GetEphemeroiSpectralStateResponse.parse({ phaseState }));
+  } catch (err) {
+    logger.error({ err }, "GET /ephemeroi/spectral/state failed");
+    res.status(500).json({ error: "Failed to compute phase state" });
+  }
+});
+
+router.post("/ephemeroi/spectral/invoke", async (req, res) => {
+  const parsed = InvokeEphemeroiSpectralOperatorBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+  try {
+    const { invokeOperator } = await import("./spectral/runner");
+    const invocation = await invokeOperator(parsed.data.operator);
+    res.json(
+      InvokeEphemeroiSpectralOperatorResponse.parse({
+        invocation: invocationToWire(invocation),
+      }),
+    );
+    // Surface the operator move on the SSE bus so the UI can refresh
+    // without polling. We re-use the generic "belief" channel — operators
+    // that mutate beliefs already publish there in their actions; this
+    // is just the umbrella audit signal.
+    bus.publish({
+      type: "spectral",
+      payload: invocationToWire(invocation),
+    } as unknown as EphemeroiEvent);
+    return;
+  } catch (err) {
+    if (err instanceof Error && err.name === "UnknownOperatorError") {
+      res.status(400).json({ error: err.message });
+      return;
+    }
+    logger.error({ err }, "POST /ephemeroi/spectral/invoke failed");
+    res.status(500).json({ error: "Failed to invoke spectral operator" });
+  }
+});
+
+router.get("/ephemeroi/spectral/invocations", async (req, res) => {
+  const parsed = ListEphemeroiSpectralInvocationsQueryParams.safeParse(
+    req.query,
+  );
+  if (!parsed.success) {
+    res.status(400).json({ error: "Invalid query parameters" });
+    return;
+  }
+  try {
+    const { listInvocations } = await import("./spectral/store");
+    const invocations = await listInvocations(parsed.data.limit ?? 50);
+    res.json(
+      ListEphemeroiSpectralInvocationsResponse.parse({
+        invocations: invocations.map(invocationToWire),
+      }),
+    );
+  } catch (err) {
+    logger.error({ err }, "GET /ephemeroi/spectral/invocations failed");
+    res.status(500).json({ error: "Failed to list invocations" });
+  }
+});
+
+// Local helper — collapses Date → ISO and shapes the InvocationRecord into
+// the OpenAPI-typed wire shape. Kept local to keep wire.ts focused on the
+// existing observation/belief/contradiction/etc. wires.
+function invocationToWire(
+  inv: import("./spectral/types").InvocationRecord,
+): {
+  id: number;
+  operator: string;
+  signature: import("./spectral/types").SpectralPhase[];
+  planet: import("./spectral/types").SpectralPhase;
+  personaWeights: import("./spectral/types").PersonaWeights;
+  selectionReason: string | null;
+  phaseStateBefore: import("./spectral/types").PhaseState;
+  phaseStateAfter: import("./spectral/types").PhaseState | null;
+  effect: Record<string, unknown>;
+  narration: string;
+  success: boolean;
+  error: string | null;
+  invokedAt: string;
+} {
+  return {
+    id: inv.id,
+    operator: inv.operator,
+    signature: inv.signature,
+    planet: inv.planet,
+    personaWeights: inv.personaWeights,
+    selectionReason: inv.selectionReason,
+    phaseStateBefore: inv.phaseStateBefore,
+    phaseStateAfter: inv.phaseStateAfter,
+    effect: inv.effect,
+    narration: inv.narration,
+    success: inv.success,
+    error: inv.error,
+    invokedAt: inv.invokedAt.toISOString(),
+  };
+}
 
 // ===== SSE: live event stream =====
 // NB: This route is intentionally outside the OpenAPI spec — SSE is not a

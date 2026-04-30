@@ -267,3 +267,83 @@ export const ephemeroiReportsTable = pgTable(
     createdAtIdx: index("ephemeroi_reports_created_at_idx").on(t.createdAt),
   }),
 );
+
+/**
+ * Spectral-Skills Layer invocation log.
+ *
+ * Each row records one execution of a spectral cognitive operator
+ * (illumination-collapse, contradiction-collapse, belief-stabilization,
+ * phase-kick-expansion, collatz-kick, temporal-smoothing, lens-controller).
+ *
+ * Operators are phase-aligned wrappers around real DB mutations on
+ * `ephemeroi_beliefs`, `ephemeroi_contradictions`, and the source-state
+ * vector — they do NOT maintain shadow state. This table is the
+ * "phase-transition graph" the spectral skills spec calls for: the agent's
+ * own history of cognitive moves, queryable by signature, planet, and
+ * effect.
+ *
+ * `phaseStateBefore` / `phaseStateAfter` snapshot the global phase state
+ * (illumination density, phase mobility, stagnation length, persona
+ * imbalance, attractor drift) immediately before and after the operator
+ * ran, so the user can see what the operator actually shifted.
+ */
+export const ephemeroiSpectralInvocationsTable = pgTable(
+  "ephemeroi_spectral_invocations",
+  {
+    id: serial("id").primaryKey(),
+    operator: text("operator").notNull(),
+    signature: jsonb("signature").$type<string[]>().notNull(),
+    planet: text("planet").notNull(),
+    personaWeights: jsonb("persona_weights")
+      .$type<{ Don: number; Wife: number; Son: number }>()
+      .notNull(),
+    /**
+     * Why the lens controller picked this operator (or null if the user
+     * picked it directly). Short LLM-free string, e.g. "stagnation high".
+     */
+    selectionReason: text("selection_reason"),
+    phaseStateBefore: jsonb("phase_state_before")
+      .$type<{
+        illuminationDensity: number;
+        phaseMobility: number;
+        stagnationSeconds: number;
+        personaImbalance: number;
+        attractorDrift: number;
+      }>()
+      .notNull(),
+    phaseStateAfter: jsonb("phase_state_after").$type<{
+      illuminationDensity: number;
+      phaseMobility: number;
+      stagnationSeconds: number;
+      personaImbalance: number;
+      attractorDrift: number;
+    }>(),
+    /**
+     * What the operator actually did, structured. Example:
+     * { illumination: +0.04, mobility: 0, structure: +0.10,
+     *   beliefId: 42, beliefProposition: "X", action: "stabilize" }
+     */
+    effect: jsonb("effect")
+      .$type<Record<string, unknown>>()
+      .notNull()
+      .default({}),
+    /**
+     * One-line human description of the move ("stabilized 'foo' from
+     * 0.62 → 0.67"). Surfaced verbatim in the UI.
+     */
+    narration: text("narration").notNull(),
+    success: boolean("success").notNull().default(true),
+    error: text("error"),
+    invokedAt: timestamp("invoked_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    invokedAtIdx: index("ephemeroi_spectral_invocations_invoked_at_idx").on(
+      t.invokedAt,
+    ),
+    operatorIdx: index("ephemeroi_spectral_invocations_operator_idx").on(
+      t.operator,
+    ),
+  }),
+);
