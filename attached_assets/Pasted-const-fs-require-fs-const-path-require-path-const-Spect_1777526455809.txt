@@ -1,0 +1,72 @@
+const fs = require('fs');
+const path = require('path');
+const { SpectralSkill } = require('./skill');
+
+class SpectralRegistry {
+  constructor() {
+    this.skills = new Map(); // name -> SpectralSkill instance
+    this.byPlanet = new Map(); // "Energy" -> [skills...]
+    this.bySignature = new Map(); // "Energy" -> [skills...]
+  }
+
+  async loadSkills(skillDir = path.join(__dirname, '../../agent/skills')) {
+    const files = fs.readdirSync(skillDir).filter(f => f.endsWith('.js'));
+    for (const file of files) {
+      const fullPath = path.join(skillDir, file);
+      try {
+        // Use dynamic import for better ESM/CJS compatibility and to avoid cache issues during self-mod
+        const module = await import(`file://${fullPath}`); // absolute for Replit reliability
+        const skill = module.default || module;
+        if (skill instanceof SpectralSkill) {
+          this.register(skill);
+          console.log(`[Spectral] Loaded skill: ${skill.name} (${skill.planet})`);
+        }
+      } catch (err) {
+        console.error(`[Spectral] Failed to load ${file}:`, err.message);
+      }
+    }
+  }
+
+  register(skill) {
+    this.skills.set(skill.name, skill);
+
+    if (!this.byPlanet.has(skill.planet)) this.byPlanet.set(skill.planet, []);
+    this.byPlanet.get(skill.planet).push(skill);
+
+    skill.signature.forEach(sig => {
+      if (!this.bySignature.has(sig)) this.bySignature.set(sig, []);
+      this.bySignature.get(sig).push(skill);
+    });
+  }
+
+  getSkill(name) {
+    return this.skills.get(name);
+  }
+
+  getSkillsByPlanet(planet) {
+    return this.byPlanet.get(planet) || [];
+  }
+
+  getSkillsBySignature(signature) {
+    return this.bySignature.get(signature) || [];
+  }
+
+  // Compose a pipeline from signatures (e.g., ["Energy", "Gravity", "Light", "Prism"])
+  async composePipeline(signatures, initialCtx) {
+    let ctx = { ...initialCtx };
+    for (const sig of signatures) {
+      const candidates = this.getSkillsBySignature(sig);
+      if (candidates.length === 0) {
+        console.warn(`No skill found for signature: ${sig}`);
+        continue;
+      }
+      // Simple weighted selection or round-robin; here we take the first for minimalism
+      // You can later add persona-weighted selection logic
+      const skill = candidates[0];
+      ctx = await skill.apply(ctx);
+    }
+    return ctx;
+  }
+}
+
+module.exports = { SpectralRegistry };
