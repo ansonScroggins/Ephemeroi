@@ -11,12 +11,16 @@
  * lens-controller is supposed to be transparent and tunable, not an
  * opaque LLM call. The user can always invoke a specific operator
  * directly via the API.
+ *
+ * The internals (`computeDemand`, `scoreOperator`, `explain`) are
+ * exported so the SpectralRegistry can reuse the same math when picking
+ * the best skill for a single signature in `composePipeline`.
  */
-import type {
-  PhaseState,
-  SpectralOperator,
-} from "./types";
-import { listOperators } from "./operators";
+import type { PhaseState, SpectralOperator } from "./types";
+// NB: import the static manifest directly (not via `./operators` →
+// `./registry`) to avoid a require-cycle. `./registry` itself imports
+// from this file, so we cannot pull from `./operators` here.
+import { ALL_SKILLS } from "./skills";
 
 /**
  * Stagnation is reported in seconds; map it onto [0,1] with a saturating
@@ -28,7 +32,14 @@ function stagnationPressure(stagnationSeconds: number): number {
   return 1 - Math.exp(-stagnationSeconds / (halfLifeSeconds * Math.LOG2E));
 }
 
-interface SelectionScore {
+export interface DemandVector {
+  illum: number;
+  mobility: number;
+  structure: number;
+  trim: number;
+}
+
+export interface SelectionScore {
   operator: SpectralOperator;
   score: number;
   reason: string;
@@ -42,12 +53,7 @@ interface SelectionScore {
  *   structureDemand— high when chaotic (high attractorDrift)
  *   trimDemand     — high when over-confident-and-stagnant (so we should forget)
  */
-function demand(state: PhaseState): {
-  illum: number;
-  mobility: number;
-  structure: number;
-  trim: number;
-} {
+export function computeDemand(state: PhaseState): DemandVector {
   const stag = stagnationPressure(state.stagnationSeconds);
   return {
     illum: 1 - state.illuminationDensity,
@@ -60,42 +66,77 @@ function demand(state: PhaseState): {
   };
 }
 
+/**
+ * Score a single operator against a demand vector. Pulled out so the
+ * SpectralRegistry can score a per-signature subset without re-implementing
+ * the math.
+ */
+export function scoreOperator(
+  op: SpectralOperator,
+  d: DemandVector,
+): number {
+  const e = op.expectedEffect;
+  // Score = how well the operator's expected effect satisfies demand.
+  // Negative effects are interpreted as "this operator reduces that
+  // axis" — so they only score positively for the matching demand
+  // (e.g. negative illumination effect satisfies trim demand).
+  let score =
+    Math.max(0, e.illumination) * d.illum +
+    Math.max(0, e.mobility) * d.mobility +
+    Math.max(0, e.structure) * d.structure +
+    Math.max(0, -e.illumination) * d.trim +
+    Math.max(0, -e.structure) * d.trim;
+  // Tiny tie-breaker: prefer the most "specific" operator (single-phase
+  // signature) when scores are otherwise equal, so the lens controller
+  // doesn't drift toward Prism-class meta-ops.
+  score += op.signature.length === 1 ? 0.001 : 0;
+  return score;
+}
+
+export function explain(name: string, d: DemandVector): string {
+  const dominant = Object.entries(d).sort((a, b) => b[1] - a[1])[0];
+  if (!dominant) return name;
+  const [axis, value] = dominant;
+  const fmt = value.toFixed(2);
+  switch (axis) {
+    case "illum":
+      return `low illumination (demand ${fmt}) — running ${name}`;
+    case "mobility":
+      return `stagnation/low mobility (demand ${fmt}) — running ${name}`;
+    case "structure":
+      return `attractor drift (demand ${fmt}) — running ${name}`;
+    case "trim":
+      return `stale strong picture (demand ${fmt}) — running ${name}`;
+    default:
+      return name;
+  }
+}
+
+/**
+ * Filter a candidate list to those operators that pass their `feasible()`
+ * check. If every candidate is infeasible, returns the original list as a
+ * fallback (the runner will record any NoTargetError that results).
+ */
+export async function filterFeasible(
+  candidates: SpectralOperator[],
+): Promise<SpectralOperator[]> {
+  const checks = await Promise.all(
+    candidates.map(async (op) => (op.feasible ? await op.feasible() : true)),
+  );
+  const eligible = candidates.filter((_, i) => checks[i]);
+  return eligible.length > 0 ? eligible : candidates;
+}
+
 export async function selectOperator(
   state: PhaseState,
 ): Promise<SelectionScore> {
-  const d = demand(state);
-  // Feasibility filter: drop operators whose `feasible()` says no — we
-  // never want the lens controller to pick something that we already
-  // know will throw NoTargetError on settings grounds (the most common
-  // case is `phase-kick-expansion` when autonomy is off).
-  const all = listOperators();
-  const feasibilityChecks = await Promise.all(
-    all.map(async (op) => (op.feasible ? await op.feasible() : true)),
-  );
-  const eligible = all.filter((_, i) => feasibilityChecks[i]);
-  const pool = eligible.length > 0 ? eligible : all;
-  const scored: SelectionScore[] = pool.map((op) => {
-    const e = op.expectedEffect;
-    // Score = how well the operator's expected effect satisfies demand.
-    // Negative effects are interpreted as "this operator reduces that
-    // axis" — so they only score positively for the matching demand
-    // (e.g. negative illumination effect satisfies trim demand).
-    let score =
-      Math.max(0, e.illumination) * d.illum +
-      Math.max(0, e.mobility) * d.mobility +
-      Math.max(0, e.structure) * d.structure +
-      Math.max(0, -e.illumination) * d.trim +
-      Math.max(0, -e.structure) * d.trim;
-    // Tiny tie-breaker: prefer the most "specific" operator (single-phase
-    // signature) when scores are otherwise equal, so the lens controller
-    // doesn't drift toward Prism-class meta-ops.
-    score += op.signature.length === 1 ? 0.001 : 0;
-    return {
-      operator: op,
-      score,
-      reason: explain(op.name, d),
-    };
-  });
+  const d = computeDemand(state);
+  const pool = await filterFeasible(ALL_SKILLS);
+  const scored: SelectionScore[] = pool.map((op) => ({
+    operator: op,
+    score: scoreOperator(op, d),
+    reason: explain(op.name, d),
+  }));
   scored.sort((a, b) => b.score - a.score);
   // Fallback: if every score is zero (quiescent worldview) the lens
   // controller defaults to belief-stabilization — strengthening what we
@@ -113,26 +154,4 @@ export async function selectOperator(
     }
   }
   return winner;
-}
-
-function explain(
-  name: string,
-  d: { illum: number; mobility: number; structure: number; trim: number },
-): string {
-  const dominant = Object.entries(d).sort((a, b) => b[1] - a[1])[0];
-  if (!dominant) return name;
-  const [axis, value] = dominant;
-  const fmt = value.toFixed(2);
-  switch (axis) {
-    case "illum":
-      return `low illumination (demand ${fmt}) — running ${name}`;
-    case "mobility":
-      return `stagnation/low mobility (demand ${fmt}) — running ${name}`;
-    case "structure":
-      return `attractor drift (demand ${fmt}) — running ${name}`;
-    case "trim":
-      return `stale strong picture (demand ${fmt}) — running ${name}`;
-    default:
-      return name;
-  }
 }

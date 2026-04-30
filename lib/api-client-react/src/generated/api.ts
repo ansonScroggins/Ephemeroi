@@ -38,6 +38,8 @@ import type {
   EphemeroiSpectralInvokeRequest,
   EphemeroiSpectralInvokeResponse,
   EphemeroiSpectralOperatorsResponse,
+  EphemeroiSpectralSelfBuildCycleResponse,
+  EphemeroiSpectralSelfBuildStatus,
   EphemeroiSpectralStateResponse,
   EphemeroiState,
   EphemeroiStreamIngestResponse,
@@ -2797,3 +2799,181 @@ export function useListEphemeroiSpectralInvocations<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * The self-build loop autonomously composes spectral pipelines
+(Energy → Gravity, then Light → Prism if the first phase produced
+any effect) on a fixed cadence. Off by default; opt in with
+`EPHEMEROI_SPECTRAL_SELF_BUILD=1`.
+
+ * @summary Status of the autonomous spectral self-build loop
+ */
+export const getGetEphemeroiSpectralSelfBuildStatusUrl = () => {
+  return `/api/ephemeroi/spectral/self-build/status`;
+};
+
+export const getEphemeroiSpectralSelfBuildStatus = async (
+  options?: RequestInit,
+): Promise<EphemeroiSpectralSelfBuildStatus> => {
+  return customFetch<EphemeroiSpectralSelfBuildStatus>(
+    getGetEphemeroiSpectralSelfBuildStatusUrl(),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getGetEphemeroiSpectralSelfBuildStatusQueryKey = () => {
+  return [`/api/ephemeroi/spectral/self-build/status`] as const;
+};
+
+export const getGetEphemeroiSpectralSelfBuildStatusQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEphemeroiSpectralSelfBuildStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiSpectralSelfBuildStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetEphemeroiSpectralSelfBuildStatusQueryKey();
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEphemeroiSpectralSelfBuildStatus>>
+  > = ({ signal }) =>
+    getEphemeroiSpectralSelfBuildStatus({ signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiSpectralSelfBuildStatus>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEphemeroiSpectralSelfBuildStatusQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEphemeroiSpectralSelfBuildStatus>>
+>;
+export type GetEphemeroiSpectralSelfBuildStatusQueryError = ErrorType<unknown>;
+
+/**
+ * @summary Status of the autonomous spectral self-build loop
+ */
+
+export function useGetEphemeroiSpectralSelfBuildStatus<
+  TData = Awaited<ReturnType<typeof getEphemeroiSpectralSelfBuildStatus>>,
+  TError = ErrorType<unknown>,
+>(options?: {
+  query?: UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiSpectralSelfBuildStatus>>,
+    TError,
+    TData
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions =
+    getGetEphemeroiSpectralSelfBuildStatusQueryOptions(options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Runs one cycle (Energy → Gravity then, gated on real effect,
+Light → Prism), persists every step, and returns the resulting
+invocations. Independent of whether the autonomous loop is
+running.
+
+ * @summary Run a single self-build cycle on demand
+ */
+export const getTriggerEphemeroiSpectralSelfBuildCycleUrl = () => {
+  return `/api/ephemeroi/spectral/self-build/trigger`;
+};
+
+export const triggerEphemeroiSpectralSelfBuildCycle = async (
+  options?: RequestInit,
+): Promise<EphemeroiSpectralSelfBuildCycleResponse> => {
+  return customFetch<EphemeroiSpectralSelfBuildCycleResponse>(
+    getTriggerEphemeroiSpectralSelfBuildCycleUrl(),
+    {
+      ...options,
+      method: "POST",
+    },
+  );
+};
+
+export const getTriggerEphemeroiSpectralSelfBuildCycleMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof triggerEphemeroiSpectralSelfBuildCycle>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof triggerEphemeroiSpectralSelfBuildCycle>>,
+  TError,
+  void,
+  TContext
+> => {
+  const mutationKey = ["triggerEphemeroiSpectralSelfBuildCycle"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof triggerEphemeroiSpectralSelfBuildCycle>>,
+    void
+  > = () => {
+    return triggerEphemeroiSpectralSelfBuildCycle(requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type TriggerEphemeroiSpectralSelfBuildCycleMutationResult = NonNullable<
+  Awaited<ReturnType<typeof triggerEphemeroiSpectralSelfBuildCycle>>
+>;
+
+export type TriggerEphemeroiSpectralSelfBuildCycleMutationError =
+  ErrorType<unknown>;
+
+/**
+ * @summary Run a single self-build cycle on demand
+ */
+export const useTriggerEphemeroiSpectralSelfBuildCycle = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof triggerEphemeroiSpectralSelfBuildCycle>>,
+    TError,
+    void,
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof triggerEphemeroiSpectralSelfBuildCycle>>,
+  TError,
+  void,
+  TContext
+> => {
+  return useMutation(
+    getTriggerEphemeroiSpectralSelfBuildCycleMutationOptions(options),
+  );
+};

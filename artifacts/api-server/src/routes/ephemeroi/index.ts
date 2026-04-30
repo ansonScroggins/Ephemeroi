@@ -71,6 +71,11 @@ import { ephemeroiLoop, InFlightError } from "./loop";
 import { startTelegramAnswerLoop } from "./telegramAnswer";
 import { startConvergence } from "./convergence";
 import { startTopicBeliefDecayLoop } from "./topicBeliefDecayLoop";
+import {
+  startSelfBuildLoop,
+  runOneCycle as runSelfBuildCycle,
+  getSelfBuildStatus,
+} from "./spectral/self-build-loop";
 import { bus, type EphemeroiEvent } from "./bus";
 import { assertPublicHttpUrl } from "./guard";
 import { logger } from "../../lib/logger";
@@ -94,6 +99,18 @@ startConvergence();
 // opinion toward neutral 0.5 with a half-life modulated by the cognitive
 // field (settled → slower decay, contested/oscillating → faster).
 startTopicBeliefDecayLoop();
+// Optional autonomous spectral self-build loop. OFF by default — opt in
+// with `EPHEMEROI_SPECTRAL_SELF_BUILD=1`. Each cycle composes
+// ["Energy", "Gravity"] then (gated on real effect) ["Light", "Prism"]
+// via the SpectralRegistry, persisting every step.
+if (process.env["EPHEMEROI_SPECTRAL_SELF_BUILD"] === "1") {
+  const intervalMs = Number(
+    process.env["EPHEMEROI_SPECTRAL_SELF_BUILD_INTERVAL_MS"] ?? "60000",
+  );
+  startSelfBuildLoop({
+    intervalMs: Number.isFinite(intervalMs) && intervalMs > 0 ? intervalMs : 60_000,
+  });
+}
 
 // ===== State (one-shot dashboard) =====
 
@@ -726,6 +743,41 @@ router.get("/ephemeroi/spectral/invocations", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /ephemeroi/spectral/invocations failed");
     res.status(500).json({ error: "Failed to list invocations" });
+  }
+});
+
+// ===== Spectral self-build loop =====
+
+router.get("/ephemeroi/spectral/self-build/status", (_req, res) => {
+  try {
+    const status = getSelfBuildStatus();
+    res.json({
+      enabled: status.enabled,
+      intervalMs: status.intervalMs,
+      cycleCount: status.cycleCount,
+      startedAt: status.startedAt,
+      lastCycleAt: status.lastCycleAt,
+      lastCycleResult: status.lastCycleResult,
+      lastInvocations: status.lastInvocations.map(invocationToWire),
+    });
+  } catch (err) {
+    logger.error({ err }, "GET /ephemeroi/spectral/self-build/status failed");
+    res.status(500).json({ error: "Failed to read self-build status" });
+  }
+});
+
+router.post("/ephemeroi/spectral/self-build/trigger", async (_req, res) => {
+  try {
+    const { result, invocations } = await runSelfBuildCycle({
+      reasonPrefix: "[manual trigger]",
+    });
+    res.json({
+      result,
+      invocations: invocations.map(invocationToWire),
+    });
+  } catch (err) {
+    logger.error({ err }, "POST /ephemeroi/spectral/self-build/trigger failed");
+    res.status(500).json({ error: "Failed to run self-build cycle" });
   }
 });
 

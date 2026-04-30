@@ -6,12 +6,15 @@ import {
   useGetEphemeroiSpectralState,
   useListEphemeroiSpectralInvocations,
   useInvokeEphemeroiSpectralOperator,
+  useGetEphemeroiSpectralSelfBuildStatus,
+  useTriggerEphemeroiSpectralSelfBuildCycle,
   getGetEphemeroiSpectralStateQueryKey,
   getListEphemeroiSpectralInvocationsQueryKey,
+  getGetEphemeroiSpectralSelfBuildStatusQueryKey,
   getListEphemeroiBeliefsQueryKey,
   getListEphemeroiContradictionsQueryKey,
 } from "@workspace/api-client-react";
-import { Sparkles, Sun, Magnet, Zap, Hourglass, Triangle, Play } from "lucide-react";
+import { Sparkles, Sun, Magnet, Zap, Hourglass, Triangle, Play, Repeat } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -60,6 +63,42 @@ export default function Spectral() {
       { query: { refetchInterval: 5000 } },
     );
   const invoke = useInvokeEphemeroiSpectralOperator();
+  const { data: selfBuildData } = useGetEphemeroiSpectralSelfBuildStatus({
+    query: { refetchInterval: 5000 },
+  });
+  const triggerSelfBuild = useTriggerEphemeroiSpectralSelfBuildCycle();
+
+  const handleSelfBuildTrigger = async () => {
+    try {
+      const res = await triggerSelfBuild.mutateAsync();
+      const successCount = res.invocations.filter((i) => i.success).length;
+      toast({
+        title: `Self-build cycle: ${res.result}`,
+        description: `${res.invocations.length} step(s), ${successCount} produced effect.`,
+      });
+      queryClient.invalidateQueries({
+        queryKey: getGetEphemeroiSpectralSelfBuildStatusQueryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getGetEphemeroiSpectralStateQueryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getListEphemeroiSpectralInvocationsQueryKey({ limit: 50 }),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getListEphemeroiBeliefsQueryKey(),
+      });
+      queryClient.invalidateQueries({
+        queryKey: getListEphemeroiContradictionsQueryKey(),
+      });
+    } catch (err) {
+      toast({
+        title: "Self-build cycle failed",
+        description: err instanceof Error ? err.message : String(err),
+        variant: "destructive",
+      });
+    }
+  };
 
   const handleInvoke = async (operator?: string) => {
     try {
@@ -156,6 +195,91 @@ export default function Spectral() {
               <Sparkles className="w-4 h-4 mr-2" />
               {invoke.isPending ? "Running…" : "Run Lens Controller"}
             </Button>
+          </CardContent>
+        </Card>
+      </section>
+
+      {/* Self-build loop */}
+      <section>
+        <Card className="bg-cyan-500/5 border-cyan-500/30">
+          <CardContent className="p-6 space-y-4">
+            <div className="flex items-start justify-between gap-4 flex-wrap">
+              <div>
+                <div className="flex items-center gap-2 mb-1">
+                  <Repeat className="w-5 h-5 text-cyan-400" />
+                  <h3 className="font-serif text-xl">Self-Build Loop</h3>
+                  {selfBuildData?.enabled ? (
+                    <Badge
+                      variant="outline"
+                      className="bg-emerald-500/10 text-emerald-400 border-emerald-500/30"
+                      data-testid="badge-self-build-status"
+                    >
+                      auto · {Math.round((selfBuildData.intervalMs ?? 0) / 1000)}s
+                    </Badge>
+                  ) : (
+                    <Badge
+                      variant="outline"
+                      className="bg-muted/40 text-muted-foreground border-border"
+                      data-testid="badge-self-build-status"
+                    >
+                      manual
+                    </Badge>
+                  )}
+                </div>
+                <p className="text-sm text-muted-foreground max-w-xl">
+                  Energy → Gravity (generative). If real effect is produced,
+                  Light → Prism (reflective). Otherwise the reflective phase
+                  is skipped. Every step is persisted as an invocation.
+                </p>
+              </div>
+              <Button
+                onClick={handleSelfBuildTrigger}
+                disabled={triggerSelfBuild.isPending}
+                className="bg-cyan-500 hover:bg-cyan-600 text-white"
+                data-testid="button-trigger-self-build"
+              >
+                <Repeat className="w-4 h-4 mr-2" />
+                {triggerSelfBuild.isPending ? "Cycling…" : "Run cycle now"}
+              </Button>
+            </div>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 pt-2 border-t border-cyan-500/20">
+              <Metric
+                label="Cycles"
+                value={String(selfBuildData?.cycleCount ?? 0)}
+              />
+              <Metric
+                label="Last result"
+                value={selfBuildData?.lastCycleResult ?? "idle"}
+              />
+              <Metric
+                label="Last cycle"
+                value={
+                  selfBuildData?.lastCycleAt
+                    ? formatDistanceToNow(new Date(selfBuildData.lastCycleAt), {
+                        addSuffix: true,
+                      })
+                    : "—"
+                }
+              />
+              <Metric
+                label="Last invocations"
+                value={String(selfBuildData?.lastInvocations.length ?? 0)}
+              />
+            </div>
+            {selfBuildData && selfBuildData.lastInvocations.length > 0 && (
+              <div
+                className="text-xs font-mono text-muted-foreground pt-2"
+                data-testid="text-self-build-last-pipeline"
+              >
+                last pipeline:{" "}
+                {selfBuildData.lastInvocations
+                  .map(
+                    (inv) =>
+                      `${inv.operator}${inv.success ? " ✓" : " ·"}`,
+                  )
+                  .join(" → ")}
+              </div>
+            )}
           </CardContent>
         </Card>
       </section>

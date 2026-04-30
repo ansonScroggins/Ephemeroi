@@ -731,6 +731,40 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EphemeroiSpectralInvocationsResponse"
+  /ephemeroi/spectral/self-build/status:
+    get:
+      operationId: getEphemeroiSpectralSelfBuildStatus
+      tags: [ephemeroi]
+      summary: Status of the autonomous spectral self-build loop
+      description: |
+        The self-build loop autonomously composes spectral pipelines
+        (Energy → Gravity, then Light → Prism if the first phase produced
+        any effect) on a fixed cadence. Off by default; opt in with
+        `EPHEMEROI_SPECTRAL_SELF_BUILD=1`.
+      responses:
+        "200":
+          description: Loop status snapshot
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSpectralSelfBuildStatus"
+  /ephemeroi/spectral/self-build/trigger:
+    post:
+      operationId: triggerEphemeroiSpectralSelfBuildCycle
+      tags: [ephemeroi]
+      summary: Run a single self-build cycle on demand
+      description: |
+        Runs one cycle (Energy → Gravity then, gated on real effect,
+        Light → Prism), persists every step, and returns the resulting
+        invocations. Independent of whether the autonomous loop is
+        running.
+      responses:
+        "200":
+          description: Cycle finished
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiSpectralSelfBuildCycleResponse"
 components:
   schemas:
     HealthStatus:
@@ -1692,6 +1726,61 @@ components:
           items:
             $ref: "#/components/schemas/EphemeroiSpectralInvocation"
       required: [invocations]
+
+    EphemeroiSpectralSelfBuildStatus:
+      type: object
+      description: |
+        Snapshot of the autonomous spectral self-build loop. `enabled` is
+        true while the loop is actively running cycles. `lastCycleResult`
+        is one of "ok" (both phases completed), "gated" (the generative
+        phase produced no effect so the reflective phase was skipped),
+        "errored" (a cycle threw), or "idle" (no cycle has run yet).
+      properties:
+        enabled:
+          type: boolean
+        intervalMs:
+          type: integer
+          minimum: 1000
+        cycleCount:
+          type: integer
+          minimum: 0
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastCycleAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastCycleResult:
+          type: string
+          enum: [ok, gated, errored, idle]
+        lastInvocations:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiSpectralInvocation"
+      required:
+        - enabled
+        - intervalMs
+        - cycleCount
+        - lastCycleResult
+        - lastInvocations
+
+    EphemeroiSpectralSelfBuildCycleResponse:
+      type: object
+      description: |
+        Result of a single on-demand cycle. `result` is the same
+        4-value enum as `lastCycleResult`. `invocations` is every step
+        that actually ran during the cycle (1–4 entries).
+      properties:
+        result:
+          type: string
+          enum: [ok, gated, errored, idle]
+        invocations:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiSpectralInvocation"
+      required: [result, invocations]
 
     EphemeroiTopicBeliefHistoryEntry:
       type: object

@@ -761,6 +761,57 @@ export interface EphemeroiSpectralInvocationsResponse {
   invocations: EphemeroiSpectralInvocation[];
 }
 
+export type EphemeroiSpectralSelfBuildStatusLastCycleResult =
+  (typeof EphemeroiSpectralSelfBuildStatusLastCycleResult)[keyof typeof EphemeroiSpectralSelfBuildStatusLastCycleResult];
+
+export const EphemeroiSpectralSelfBuildStatusLastCycleResult = {
+  ok: "ok",
+  gated: "gated",
+  errored: "errored",
+  idle: "idle",
+} as const;
+
+/**
+ * Snapshot of the autonomous spectral self-build loop. `enabled` is
+true while the loop is actively running cycles. `lastCycleResult`
+is one of "ok" (both phases completed), "gated" (the generative
+phase produced no effect so the reflective phase was skipped),
+"errored" (a cycle threw), or "idle" (no cycle has run yet).
+
+ */
+export interface EphemeroiSpectralSelfBuildStatus {
+  enabled: boolean;
+  /** @minimum 1000 */
+  intervalMs: number;
+  /** @minimum 0 */
+  cycleCount: number;
+  startedAt?: string | null;
+  lastCycleAt?: string | null;
+  lastCycleResult: EphemeroiSpectralSelfBuildStatusLastCycleResult;
+  lastInvocations: EphemeroiSpectralInvocation[];
+}
+
+export type EphemeroiSpectralSelfBuildCycleResponseResult =
+  (typeof EphemeroiSpectralSelfBuildCycleResponseResult)[keyof typeof EphemeroiSpectralSelfBuildCycleResponseResult];
+
+export const EphemeroiSpectralSelfBuildCycleResponseResult = {
+  ok: "ok",
+  gated: "gated",
+  errored: "errored",
+  idle: "idle",
+} as const;
+
+/**
+ * Result of a single on-demand cycle. `result` is the same
+4-value enum as `lastCycleResult`. `invocations` is every step
+that actually ran during the cycle (1–4 entries).
+
+ */
+export interface EphemeroiSpectralSelfBuildCycleResponse {
+  result: EphemeroiSpectralSelfBuildCycleResponseResult;
+  invocations: EphemeroiSpectralInvocation[];
+}
+
 export interface EphemeroiTopicBeliefHistoryEntry {
   stance: string;
   /**

@@ -1742,3 +1742,306 @@ export const ListEphemeroiSpectralInvocationsResponse = zod.object({
     }),
   ),
 });
+
+/**
+ * The self-build loop autonomously composes spectral pipelines
+(Energy → Gravity, then Light → Prism if the first phase produced
+any effect) on a fixed cadence. Off by default; opt in with
+`EPHEMEROI_SPECTRAL_SELF_BUILD=1`.
+
+ * @summary Status of the autonomous spectral self-build loop
+ */
+export const getEphemeroiSpectralSelfBuildStatusResponseIntervalMsMin = 1000;
+
+export const getEphemeroiSpectralSelfBuildStatusResponseCycleCountMin = 0;
+
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforeIlluminationDensityMin = 0;
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforeIlluminationDensityMax = 1;
+
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforePhaseMobilityMin = 0;
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforePhaseMobilityMax = 1;
+
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforeStagnationSecondsMin = 0;
+
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforePersonaImbalanceMin = 0;
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforePersonaImbalanceMax = 1;
+
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforeAttractorDriftMin = 0;
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforeAttractorDriftMax = 1;
+
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOneIlluminationDensityMin = 0;
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOneIlluminationDensityMax = 1;
+
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOnePhaseMobilityMin = 0;
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOnePhaseMobilityMax = 1;
+
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOneStagnationSecondsMin = 0;
+
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOnePersonaImbalanceMin = 0;
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOnePersonaImbalanceMax = 1;
+
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOneAttractorDriftMin = 0;
+export const getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOneAttractorDriftMax = 1;
+
+export const GetEphemeroiSpectralSelfBuildStatusResponse = zod
+  .object({
+    enabled: zod.boolean(),
+    intervalMs: zod
+      .number()
+      .min(getEphemeroiSpectralSelfBuildStatusResponseIntervalMsMin),
+    cycleCount: zod
+      .number()
+      .min(getEphemeroiSpectralSelfBuildStatusResponseCycleCountMin),
+    startedAt: zod.coerce.date().nullish(),
+    lastCycleAt: zod.coerce.date().nullish(),
+    lastCycleResult: zod.enum(["ok", "gated", "errored", "idle"]),
+    lastInvocations: zod.array(
+      zod.object({
+        id: zod.number(),
+        operator: zod.string(),
+        signature: zod.array(
+          zod.enum(["Light", "Gravity", "Energy", "Time", "Prism"]),
+        ),
+        planet: zod.enum(["Light", "Gravity", "Energy", "Time", "Prism"]),
+        personaWeights: zod.object({
+          Don: zod.number(),
+          Wife: zod.number(),
+          Son: zod.number(),
+        }),
+        selectionReason: zod.string().nullish(),
+        phaseStateBefore: zod.object({
+          illuminationDensity: zod
+            .number()
+            .min(
+              getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforeIlluminationDensityMin,
+            )
+            .max(
+              getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforeIlluminationDensityMax,
+            ),
+          phaseMobility: zod
+            .number()
+            .min(
+              getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforePhaseMobilityMin,
+            )
+            .max(
+              getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforePhaseMobilityMax,
+            ),
+          stagnationSeconds: zod
+            .number()
+            .min(
+              getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforeStagnationSecondsMin,
+            ),
+          personaImbalance: zod
+            .number()
+            .min(
+              getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforePersonaImbalanceMin,
+            )
+            .max(
+              getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforePersonaImbalanceMax,
+            ),
+          attractorDrift: zod
+            .number()
+            .min(
+              getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforeAttractorDriftMin,
+            )
+            .max(
+              getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateBeforeAttractorDriftMax,
+            ),
+        }),
+        phaseStateAfter: zod
+          .object({
+            illuminationDensity: zod
+              .number()
+              .min(
+                getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOneIlluminationDensityMin,
+              )
+              .max(
+                getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOneIlluminationDensityMax,
+              ),
+            phaseMobility: zod
+              .number()
+              .min(
+                getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOnePhaseMobilityMin,
+              )
+              .max(
+                getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOnePhaseMobilityMax,
+              ),
+            stagnationSeconds: zod
+              .number()
+              .min(
+                getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOneStagnationSecondsMin,
+              ),
+            personaImbalance: zod
+              .number()
+              .min(
+                getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOnePersonaImbalanceMin,
+              )
+              .max(
+                getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOnePersonaImbalanceMax,
+              ),
+            attractorDrift: zod
+              .number()
+              .min(
+                getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOneAttractorDriftMin,
+              )
+              .max(
+                getEphemeroiSpectralSelfBuildStatusResponseLastInvocationsItemPhaseStateAfterOneAttractorDriftMax,
+              ),
+          })
+          .nullish(),
+        effect: zod.record(zod.string(), zod.unknown()),
+        narration: zod.string(),
+        success: zod.boolean(),
+        error: zod.string().nullish(),
+        invokedAt: zod.coerce.date(),
+      }),
+    ),
+  })
+  .describe(
+    'Snapshot of the autonomous spectral self-build loop. `enabled` is\ntrue while the loop is actively running cycles. `lastCycleResult`\nis one of \"ok\" (both phases completed), \"gated\" (the generative\nphase produced no effect so the reflective phase was skipped),\n\"errored\" (a cycle threw), or \"idle\" (no cycle has run yet).\n',
+  );
+
+/**
+ * Runs one cycle (Energy → Gravity then, gated on real effect,
+Light → Prism), persists every step, and returns the resulting
+invocations. Independent of whether the autonomous loop is
+running.
+
+ * @summary Run a single self-build cycle on demand
+ */
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforeIlluminationDensityMin = 0;
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforeIlluminationDensityMax = 1;
+
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforePhaseMobilityMin = 0;
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforePhaseMobilityMax = 1;
+
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforeStagnationSecondsMin = 0;
+
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforePersonaImbalanceMin = 0;
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforePersonaImbalanceMax = 1;
+
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforeAttractorDriftMin = 0;
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforeAttractorDriftMax = 1;
+
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOneIlluminationDensityMin = 0;
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOneIlluminationDensityMax = 1;
+
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOnePhaseMobilityMin = 0;
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOnePhaseMobilityMax = 1;
+
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOneStagnationSecondsMin = 0;
+
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOnePersonaImbalanceMin = 0;
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOnePersonaImbalanceMax = 1;
+
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOneAttractorDriftMin = 0;
+export const triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOneAttractorDriftMax = 1;
+
+export const TriggerEphemeroiSpectralSelfBuildCycleResponse = zod
+  .object({
+    result: zod.enum(["ok", "gated", "errored", "idle"]),
+    invocations: zod.array(
+      zod.object({
+        id: zod.number(),
+        operator: zod.string(),
+        signature: zod.array(
+          zod.enum(["Light", "Gravity", "Energy", "Time", "Prism"]),
+        ),
+        planet: zod.enum(["Light", "Gravity", "Energy", "Time", "Prism"]),
+        personaWeights: zod.object({
+          Don: zod.number(),
+          Wife: zod.number(),
+          Son: zod.number(),
+        }),
+        selectionReason: zod.string().nullish(),
+        phaseStateBefore: zod.object({
+          illuminationDensity: zod
+            .number()
+            .min(
+              triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforeIlluminationDensityMin,
+            )
+            .max(
+              triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforeIlluminationDensityMax,
+            ),
+          phaseMobility: zod
+            .number()
+            .min(
+              triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforePhaseMobilityMin,
+            )
+            .max(
+              triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforePhaseMobilityMax,
+            ),
+          stagnationSeconds: zod
+            .number()
+            .min(
+              triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforeStagnationSecondsMin,
+            ),
+          personaImbalance: zod
+            .number()
+            .min(
+              triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforePersonaImbalanceMin,
+            )
+            .max(
+              triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforePersonaImbalanceMax,
+            ),
+          attractorDrift: zod
+            .number()
+            .min(
+              triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforeAttractorDriftMin,
+            )
+            .max(
+              triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateBeforeAttractorDriftMax,
+            ),
+        }),
+        phaseStateAfter: zod
+          .object({
+            illuminationDensity: zod
+              .number()
+              .min(
+                triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOneIlluminationDensityMin,
+              )
+              .max(
+                triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOneIlluminationDensityMax,
+              ),
+            phaseMobility: zod
+              .number()
+              .min(
+                triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOnePhaseMobilityMin,
+              )
+              .max(
+                triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOnePhaseMobilityMax,
+              ),
+            stagnationSeconds: zod
+              .number()
+              .min(
+                triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOneStagnationSecondsMin,
+              ),
+            personaImbalance: zod
+              .number()
+              .min(
+                triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOnePersonaImbalanceMin,
+              )
+              .max(
+                triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOnePersonaImbalanceMax,
+              ),
+            attractorDrift: zod
+              .number()
+              .min(
+                triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOneAttractorDriftMin,
+              )
+              .max(
+                triggerEphemeroiSpectralSelfBuildCycleResponseInvocationsItemPhaseStateAfterOneAttractorDriftMax,
+              ),
+          })
+          .nullish(),
+        effect: zod.record(zod.string(), zod.unknown()),
+        narration: zod.string(),
+        success: zod.boolean(),
+        error: zod.string().nullish(),
+        invokedAt: zod.coerce.date(),
+      }),
+    ),
+  })
+  .describe(
+    "Result of a single on-demand cycle. `result` is the same\n4-value enum as `lastCycleResult`. `invocations` is every step\nthat actually ran during the cycle (1–4 entries).\n",
+  );

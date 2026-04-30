@@ -2,9 +2,15 @@
  * End-to-end runner: snapshot phase state, execute the operator, snapshot
  * again, persist the invocation, return the record.
  *
- * This is the single entry point used by both the HTTP routes and any
- * future internal callers (e.g. the main loop running the lens
- * controller as part of each cycle).
+ * Two entry points:
+ *   - `invokeOperator(name?)` — public, used by the HTTP route. If no
+ *     name is given, the lens controller picks the best operator.
+ *   - `runOperatorInstance(operator, selectionReason?)` — internal, used
+ *     by the SpectralRegistry's `composePipeline` (after it has already
+ *     selected the operator) and by the self-build loop.
+ *
+ * Both go through the same persistence path so every invocation lands
+ * in the `ephemeroi_spectral_invocations` table.
  */
 import { logger } from "../../../lib/logger";
 import { computePhaseState } from "./phaseState";
@@ -12,7 +18,7 @@ import { getOperator, listOperators } from "./operators";
 import { selectOperator } from "./router";
 import { insertInvocation } from "./store";
 import { NoTargetError } from "./actions";
-import type { InvocationRecord } from "./types";
+import type { InvocationRecord, SpectralOperator } from "./types";
 
 export class UnknownOperatorError extends Error {
   constructor(name: string) {
@@ -26,25 +32,15 @@ export class UnknownOperatorError extends Error {
 }
 
 /**
- * Run a specific operator by name. If `name` is omitted, the lens
- * controller picks the operator that best matches current phase demand.
+ * Run a specific operator instance end-to-end. Snapshots phase state
+ * before and after, catches NoTargetError vs other errors, and persists
+ * the invocation row.
  */
-export async function invokeOperator(
-  name?: string,
+export async function runOperatorInstance(
+  operator: SpectralOperator,
+  selectionReason: string | null = null,
 ): Promise<InvocationRecord> {
   const phaseStateBefore = await computePhaseState();
-
-  let operator;
-  let selectionReason: string | null = null;
-  if (!name) {
-    const sel = await selectOperator(phaseStateBefore);
-    operator = sel.operator;
-    selectionReason = sel.reason;
-  } else {
-    const op = getOperator(name);
-    if (!op) throw new UnknownOperatorError(name);
-    operator = op;
-  }
 
   let success = true;
   let narration: string;
@@ -95,4 +91,21 @@ export async function invokeOperator(
     success,
     error: errorMsg,
   });
+}
+
+/**
+ * Run a specific operator by name. If `name` is omitted, the lens
+ * controller picks the operator that best matches current phase demand.
+ */
+export async function invokeOperator(
+  name?: string,
+): Promise<InvocationRecord> {
+  if (name) {
+    const op = getOperator(name);
+    if (!op) throw new UnknownOperatorError(name);
+    return runOperatorInstance(op, null);
+  }
+  const phaseStateBefore = await computePhaseState();
+  const sel = await selectOperator(phaseStateBefore);
+  return runOperatorInstance(sel.operator, sel.reason);
 }
