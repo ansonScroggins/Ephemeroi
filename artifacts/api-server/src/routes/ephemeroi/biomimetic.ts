@@ -226,7 +226,7 @@ export async function runBiomimetic(
     if (cage || edictTriggered || invariants.length > 0) {
       bus.publish({
         type: "constellation_alert",
-        payload: { source: "biomimetic", step, ...evt },
+        payload: { source: "biomimetic", ...evt },
       });
     }
   }

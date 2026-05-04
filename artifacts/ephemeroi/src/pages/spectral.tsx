@@ -55,16 +55,27 @@ export default function Spectral() {
     useListEphemeroiSpectralOperators();
   const { data: stateData, isLoading: stateLoading } =
     useGetEphemeroiSpectralState({
-      query: { refetchInterval: 5000 },
+      query: {
+        queryKey: getGetEphemeroiSpectralStateQueryKey(),
+        refetchInterval: 5000,
+      },
     });
   const { data: invData, isLoading: invLoading } =
     useListEphemeroiSpectralInvocations(
       { limit: 50 },
-      { query: { refetchInterval: 5000 } },
+      {
+        query: {
+          queryKey: getListEphemeroiSpectralInvocationsQueryKey({ limit: 50 }),
+          refetchInterval: 5000,
+        },
+      },
     );
   const invoke = useInvokeEphemeroiSpectralOperator();
   const { data: selfBuildData } = useGetEphemeroiSpectralSelfBuildStatus({
-    query: { refetchInterval: 5000 },
+    query: {
+      queryKey: getGetEphemeroiSpectralSelfBuildStatusQueryKey(),
+      refetchInterval: 5000,
+    },
   });
   const triggerSelfBuild = useTriggerEphemeroiSpectralSelfBuildCycle();
 

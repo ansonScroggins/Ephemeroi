@@ -1,6 +1,8 @@
 import {
   useListEphemeroiTopicBeliefs,
   useGetEphemeroiCognitiveField,
+  getListEphemeroiTopicBeliefsQueryKey,
+  getGetEphemeroiCognitiveFieldQueryKey,
 } from "@workspace/api-client-react";
 import { formatDistanceToNow } from "date-fns";
 import { motion } from "framer-motion";
@@ -27,10 +29,18 @@ const MOOD_STYLES: Record<string, string> = {
 export default function TopicBeliefs() {
   const { data, isLoading } = useListEphemeroiTopicBeliefs(
     { limit: 100 },
-    { query: { refetchInterval: 15000 } },
+    {
+      query: {
+        queryKey: getListEphemeroiTopicBeliefsQueryKey({ limit: 100 }),
+        refetchInterval: 15000,
+      },
+    },
   );
   const { data: field } = useGetEphemeroiCognitiveField({
-    query: { refetchInterval: 15000 },
+    query: {
+      queryKey: getGetEphemeroiCognitiveFieldQueryKey(),
+      refetchInterval: 15000,
+    },
   });
 
   if (isLoading) {
