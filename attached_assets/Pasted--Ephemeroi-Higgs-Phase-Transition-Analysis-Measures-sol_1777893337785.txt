@@ -1,0 +1,453 @@
+# “””
+Ephemeroi Higgs Phase Transition Analysis
+
+Measures solver-internal symmetry breaking during SLS SAT solving.
+
+Usage:
+1. Import HiggsLogger into your Ephemeroi solver
+2. Call logger.step(assignment, formula) each iteration
+3. At end of run: logger.finalize(outcome, final_unsat)
+4. After N runs: HiggsAnalyzer(logs).run()
+
+Outcome values: ‘solved’ | ‘stuck_hard’ | ‘stuck_soft’
+“””
+
+import json
+import math
+import random
+import statistics
+from collections import defaultdict
+from dataclasses import dataclass, field, asdict
+from pathlib import Path
+from typing import List, Dict, Tuple, Optional
+
+# ─────────────────────────────────────────────
+
+# CORE FIELD COMPUTATIONS
+
+# ─────────────────────────────────────────────
+
+def compute_mass(var: int, formula: List[List[int]], assignment: Dict[int, int]) -> int:
+“””
+Mass of a variable = change in conflict count when flipped.
+Positive = flipping makes things worse (heavy/locked).
+Negative = flipping helps (light/mobile).
+Zero = neutral.
+“””
+def count_conflicts(asgn):
+conflicts = 0
+for clause in formula:
+satisfied = any(
+(lit > 0 and asgn.get(abs(lit), 0) == 1) or
+(lit < 0 and asgn.get(abs(lit), 0) == 0)
+for lit in clause
+)
+if not satisfied:
+conflicts += 1
+return conflicts
+
+```
+base = count_conflicts(assignment)
+assignment[var] ^= 1
+flipped = count_conflicts(assignment)
+assignment[var] ^= 1  # revert
+return flipped - base
+```
+
+def compute_field_snapshot(
+variables: List[int],
+formula: List[List[int]],
+assignment: Dict[int, int],
+sample_size: int = 30
+) -> Dict:
+“””
+Compute the Higgs field state at a single timestep.
+Samples a subset of variables for efficiency.
+Returns field_strength, field_variance, order_parameter, mass_distribution.
+“””
+# Sample for efficiency on large instances
+sample = random.sample(variables, min(sample_size, len(variables)))
+masses = [compute_mass(v, formula, assignment) for v in sample]
+
+```
+n = len(masses)
+field_strength = sum(masses) / n  # mean mass = average resistance
+
+if n > 1:
+    field_variance = statistics.variance(masses)
+else:
+    field_variance = 0.0
+
+# Order parameter: normalized asymmetry of the field
+# 0 = perfectly symmetric (disordered), >0 = broken symmetry (structured)
+if abs(field_strength) > 1e-9:
+    order_parameter = field_variance / (abs(field_strength) + 1e-9)
+else:
+    order_parameter = field_variance  # pure variance when mean ≈ 0
+
+# Mass histogram buckets: heavy_negative, neutral, heavy_positive
+heavy_neg = sum(1 for m in masses if m < -1)
+neutral    = sum(1 for m in masses if -1 <= m <= 1)
+heavy_pos  = sum(1 for m in masses if m > 1)
+
+return {
+    "field_strength":  round(field_strength, 4),
+    "field_variance":  round(field_variance, 4),
+    "order_parameter": round(order_parameter, 4),
+    "mass_min":        min(masses),
+    "mass_max":        max(masses),
+    "heavy_neg_frac":  round(heavy_neg / n, 3),
+    "neutral_frac":    round(neutral / n, 3),
+    "heavy_pos_frac":  round(heavy_pos / n, 3),
+}
+```
+
+# ─────────────────────────────────────────────
+
+# LOGGER — plug into your solve loop
+
+# ─────────────────────────────────────────────
+
+@dataclass
+class HiggsLogger:
+variables: List[int]
+formula: List[List[int]]
+log_interval: int = 50       # record every N steps
+sample_size: int = 30        # vars sampled per snapshot
+
+```
+run_id: int = 0
+_snapshots: List[Dict] = field(default_factory=list)
+_step: int = 0
+_unsat_history: List[int] = field(default_factory=list)
+
+def step(self, assignment: Dict[int, int], current_unsat: int):
+    """Call this every solver iteration."""
+    self._step += 1
+    self._unsat_history.append(current_unsat)
+
+    if self._step % self.log_interval == 0:
+        snap = compute_field_snapshot(
+            self.variables, self.formula, assignment, self.sample_size
+        )
+        snap["step"] = self._step
+        snap["unsat"] = current_unsat
+        self._snapshots.append(snap)
+
+def finalize(self, outcome: str, final_unsat: int) -> Dict:
+    """
+    Call at end of run.
+    outcome: 'solved' | 'stuck_hard' | 'stuck_soft'
+    Returns the complete run log.
+    """
+    run_log = {
+        "run_id":      self.run_id,
+        "outcome":     outcome,
+        "final_unsat": final_unsat,
+        "total_steps": self._step,
+        "snapshots":   self._snapshots,
+        "unsat_history_sampled": self._unsat_history[::self.log_interval],
+    }
+    return run_log
+
+def reset(self, run_id: int):
+    self.run_id = run_id
+    self._snapshots = []
+    self._step = 0
+    self._unsat_history = []
+```
+
+# ─────────────────────────────────────────────
+
+# ANALYZER — run after collecting N logs
+
+# ─────────────────────────────────────────────
+
+class HiggsAnalyzer:
+def **init**(self, run_logs: List[Dict]):
+self.logs = run_logs
+self.by_outcome = defaultdict(list)
+for log in run_logs:
+self.by_outcome[log[“outcome”]].append(log)
+
+```
+def run(self, output_path: str = "higgs_report.json"):
+    print(f"\n{'='*60}")
+    print("EPHEMEROI HIGGS PHASE TRANSITION ANALYSIS")
+    print(f"{'='*60}")
+    print(f"Total runs: {len(self.logs)}")
+    for outcome, logs in self.by_outcome.items():
+        print(f"  {outcome}: {len(logs)}")
+    print()
+
+    report = {
+        "summary": {},
+        "transition_detection": {},
+        "order_parameter_profiles": {},
+        "phase_divergence": {},
+    }
+
+    # ── 1. Order parameter profiles by outcome ──
+    print("── ORDER PARAMETER PROFILES ──")
+    op_by_outcome = {}
+    for outcome, logs in self.by_outcome.items():
+        all_ops = defaultdict(list)
+        for log in logs:
+            for snap in log["snapshots"]:
+                all_ops[snap["step"]].append(snap["order_parameter"])
+        
+        # Mean OP at each timestep
+        profile = {
+            step: round(statistics.mean(ops), 4)
+            for step, ops in sorted(all_ops.items())
+        }
+        op_by_outcome[outcome] = profile
+        
+        if profile:
+            peak_step = max(profile, key=profile.get)
+            peak_val  = profile[peak_step]
+            final_val = list(profile.values())[-1]
+            print(f"  [{outcome}] peak OP={peak_val:.3f} @ step {peak_step}, "
+                  f"final OP={final_val:.3f}")
+
+    report["order_parameter_profiles"] = op_by_outcome
+
+    # ── 2. Transition detection: when does OP cross threshold? ──
+    print("\n── TRANSITION DETECTION ──")
+    OP_THRESHOLD = 2.0  # tune based on your data
+    transition_steps = defaultdict(list)
+    
+    for log in self.logs:
+        outcome = log["outcome"]
+        crossed = None
+        for snap in log["snapshots"]:
+            if snap["order_parameter"] > OP_THRESHOLD:
+                crossed = snap["step"]
+                break
+        if crossed:
+            transition_steps[outcome].append(crossed)
+            
+    for outcome, steps in transition_steps.items():
+        if steps:
+            mean_cross = statistics.mean(steps)
+            print(f"  [{outcome}] mean transition step: {mean_cross:.0f} "
+                  f"(n={len(steps)})")
+        else:
+            print(f"  [{outcome}] no transition detected above threshold {OP_THRESHOLD}")
+
+    report["transition_detection"] = {
+        k: {
+            "mean_step": round(statistics.mean(v), 1) if v else None,
+            "count": len(v),
+            "threshold": OP_THRESHOLD
+        }
+        for k, v in transition_steps.items()
+    }
+
+    # ── 3. Phase divergence: do outcomes separate early? ──
+    print("\n── PHASE DIVERGENCE (early warning signal) ──")
+    # At each timestep, compute mean OP gap between solved vs stuck
+    solved_profile  = op_by_outcome.get("solved", {})
+    stuck_profile   = op_by_outcome.get("stuck_hard", {})
+    
+    if solved_profile and stuck_profile:
+        common_steps = sorted(
+            set(solved_profile.keys()) & set(stuck_profile.keys())
+        )
+        divergence = {}
+        for step in common_steps:
+            gap = abs(solved_profile[step] - stuck_profile[step])
+            divergence[step] = round(gap, 4)
+        
+        if divergence:
+            max_gap_step = max(divergence, key=divergence.get)
+            print(f"  Max divergence: {divergence[max_gap_step]:.3f} "
+                  f"@ step {max_gap_step}")
+            print(f"  → Earliest reliable prediction window: step {min(common_steps)} "
+                  f"to {max_gap_step}")
+            
+            # Find first step where gap > 1.0 (significant divergence)
+            early_signal = next(
+                (s for s in common_steps if divergence[s] > 1.0), None
+            )
+            if early_signal:
+                print(f"  → Early warning signal detectable at step {early_signal}")
+            else:
+                print(f"  → No strong early signal yet — lower threshold or more runs needed")
+
+        report["phase_divergence"] = divergence
+    else:
+        print("  Need both 'solved' and 'stuck_hard' runs to compute divergence")
+
+    # ── 4. Field strength evolution ──
+    print("\n── FIELD STRENGTH (mean mass) BY OUTCOME ──")
+    for outcome, logs in self.by_outcome.items():
+        all_fs = defaultdict(list)
+        for log in logs:
+            for snap in log["snapshots"]:
+                all_fs[snap["step"]].append(snap["field_strength"])
+        if all_fs:
+            final_step = max(all_fs.keys())
+            final_fs = statistics.mean(all_fs[final_step])
+            print(f"  [{outcome}] final field_strength: {final_fs:.3f}")
+
+    # ── 5. Save report ──
+    report["summary"] = {
+        "total_runs": len(self.logs),
+        "by_outcome": {k: len(v) for k, v in self.by_outcome.items()},
+        "op_threshold_used": OP_THRESHOLD,
+    }
+    
+    with open(output_path, "w") as f:
+        json.dump(report, f, indent=2)
+    print(f"\nFull report saved → {output_path}")
+    
+    return report
+
+def print_run_timeline(self, run_id: int):
+    """Print step-by-step field evolution for a single run."""
+    log = next((l for l in self.logs if l["run_id"] == run_id), None)
+    if not log:
+        print(f"Run {run_id} not found")
+        return
+    
+    print(f"\nRun {run_id} [{log['outcome']}] — field timeline:")
+    print(f"{'step':>6} {'unsat':>6} {'FS':>8} {'FV':>8} {'OP':>8}")
+    print("-" * 42)
+    for snap in log["snapshots"]:
+        print(f"{snap['step']:>6} {snap['unsat']:>6} "
+              f"{snap['field_strength']:>8.3f} "
+              f"{snap['field_variance']:>8.3f} "
+              f"{snap['order_parameter']:>8.3f}")
+```
+
+# ─────────────────────────────────────────────
+
+# INTEGRATION TEMPLATE
+
+# ─────────────────────────────────────────────
+
+INTEGRATION_TEMPLATE = ‘’’
+
+# ── Paste into your Ephemeroi solve() function ──
+
+from higgs_analysis import HiggsLogger, HiggsAnalyzer
+
+# Before your run loop:
+
+all_logs = []
+variables = list(range(1, num_vars + 1))
+
+for run_id in range(NUM_RUNS):
+assignment = random_assignment(variables)
+logger = HiggsLogger(variables, formula, log_interval=50, sample_size=30)
+logger.reset(run_id)
+
+```
+for step in range(MAX_STEPS):
+    # ... your existing solve logic ...
+    
+    # ADD THIS LINE in your step loop:
+    logger.step(assignment, current_unsat)
+
+    if current_unsat == 0:
+        all_logs.append(logger.finalize("solved", 0))
+        break
+else:
+    outcome = "stuck_hard" if current_unsat > 3 else "stuck_soft"
+    all_logs.append(logger.finalize(outcome, current_unsat))
+```
+
+# After all runs:
+
+analyzer = HiggsAnalyzer(all_logs)
+report = analyzer.run(“higgs_report.json”)
+
+# Inspect a specific run:
+
+analyzer.print_run_timeline(run_id=0)
+‘’’
+
+# ─────────────────────────────────────────────
+
+# DEMO — synthetic data to verify the analyzer
+
+# ─────────────────────────────────────────────
+
+def generate_synthetic_logs(n_solved=20, n_stuck=30, steps=3000):
+“””
+Generates synthetic run logs to verify analyzer output.
+Solved runs: OP rises then collapses (symmetry breaks then resolves).
+Stuck runs: OP rises and plateaus (field locks rigid).
+“””
+logs = []
+run_id = 0
+
+```
+def make_snapshots(outcome, total_steps, log_interval=50):
+    snaps = []
+    for step in range(log_interval, total_steps + 1, log_interval):
+        t = step / total_steps  # normalized time 0→1
+        
+        if outcome == "solved":
+            # OP: rises to peak ~0.4, collapses to 0 at solve
+            op = 3.5 * math.sin(math.pi * t) + random.gauss(0, 0.2)
+            fs = 1.0 + 2.0 * t * (1 - t) + random.gauss(0, 0.1)
+            unsat = max(0, int(8 * (1 - t) ** 2 + random.gauss(0, 0.3)))
+        else:
+            # OP: rises and plateaus
+            op = 2.0 * (1 - math.exp(-4 * t)) + random.gauss(0, 0.3)
+            fs = 1.5 + 1.0 * t + random.gauss(0, 0.1)
+            unsat = max(1, int(3 + random.gauss(0, 0.5)))
+
+        snaps.append({
+            "step": step,
+            "unsat": unsat,
+            "field_strength":  round(fs, 4),
+            "field_variance":  round(max(0, op * 0.8 + random.gauss(0, 0.1)), 4),
+            "order_parameter": round(max(0, op), 4),
+            "mass_min": -3,
+            "mass_max":  3,
+            "heavy_neg_frac": round(0.2 + random.gauss(0, 0.05), 3),
+            "neutral_frac":   round(0.5 + random.gauss(0, 0.05), 3),
+            "heavy_pos_frac": round(0.3 + random.gauss(0, 0.05), 3),
+        })
+    return snaps
+
+for _ in range(n_solved):
+    logs.append({
+        "run_id": run_id,
+        "outcome": "solved",
+        "final_unsat": 0,
+        "total_steps": steps,
+        "snapshots": make_snapshots("solved", steps),
+        "unsat_history_sampled": [],
+    })
+    run_id += 1
+
+for _ in range(n_stuck):
+    logs.append({
+        "run_id": run_id,
+        "outcome": "stuck_hard",
+        "final_unsat": random.randint(1, 4),
+        "total_steps": steps,
+        "snapshots": make_snapshots("stuck_hard", steps),
+        "unsat_history_sampled": [],
+    })
+    run_id += 1
+
+return logs
+```
+
+if **name** == “**main**”:
+print(“Running with synthetic data to verify analyzer…\n”)
+logs = generate_synthetic_logs(n_solved=25, n_stuck=35, steps=3000)
+analyzer = HiggsAnalyzer(logs)
+analyzer.run(“higgs_report.json”)
+analyzer.print_run_timeline(run_id=0)
+
+```
+print("\n" + "="*60)
+print("INTEGRATION TEMPLATE:")
+print(INTEGRATION_TEMPLATE)
+```
