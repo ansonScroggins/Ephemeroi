@@ -1,6 +1,6 @@
 # Ephemeroi
 
-Ephemeroi is an always-on cognitive substrate: an autonomous observer + multispectral SAT solver, with a persistent belief system, a Telegram-narrated persona stack (Don / Wife / Son), and a metacognitive search interface. Its operational core is **PHASELOCK‑SAT** — a multispectral local‑search solver with illumination engineering and phase mobility.
+Ephemeroi is an always-on cognitive substrate: an autonomous observer + multispectral SAT solver, with a persistent belief system, a Telegram-narrated council persona stack, and a metacognitive search interface. Its operational core is **PHASELOCK‑SAT** — a multispectral local‑search solver with illumination engineering and phase mobility.
 
 > ## Guiding Premise
 >

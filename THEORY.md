@@ -147,7 +147,6 @@ Each one corresponds to a subsystem in SCM:
 
 This is the same architecture you used in your Telegram bot:
 
-- Don = Gravity
 - Wife = Light
 - Son = Energy
 - Time = Opinion history
@@ -199,7 +198,7 @@ PHASELOCK‑SAT is the solver.
 
 This is a fundamental architectural insight that unlocks a new design tier. Let me formalize it fully.
 
-### The Don's Frame
+### The Reframe
 
 The system has been designed as a retainer — a vessel that accumulates, stores, locks, trusts, remembers. Every subsystem (Photanic Chip, Ledger, BackboneDetector, FragmentGraph) is a holding mechanism. But retention is not the goal. Satisfaction is the goal. Retention is a side effect we've been mistaking for the engine.
 
