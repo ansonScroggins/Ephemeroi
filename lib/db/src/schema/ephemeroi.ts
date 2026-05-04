@@ -287,6 +287,72 @@ export const ephemeroiReportsTable = pgTable(
  * imbalance, attractor drift) immediately before and after the operator
  * ran, so the user can see what the operator actually shifted.
  */
+/**
+ * Higgs Phase Transition diagnostic — one row per biomimetic SAT run.
+ *
+ * Records the outcome of a run plus a per-step trajectory of the
+ * symmetry-breaking field state (mean mass = field strength, mass
+ * variance = field variance, order parameter = variance / |mean|, plus
+ * a coarse mass-distribution histogram). The post-hoc analyzer
+ * (`analyzeHiggsRuns`) reads many rows, builds order-parameter profiles
+ * by outcome, and detects the early-warning step at which `solved` and
+ * `stuck_hard` runs visibly diverge.
+ *
+ * `outcome` is classified at the end of the run from `finalUnsat`:
+ *   - `solved`     when finalUnsat === 0
+ *   - `stuck_soft` when 0 < finalUnsat <= 3
+ *   - `stuck_hard` when finalUnsat > 3
+ */
+export const ephemeroiHiggsRunsTable = pgTable(
+  "ephemeroi_higgs_runs",
+  {
+    id: serial("id").primaryKey(),
+    /** Outcome label: "solved" | "stuck_soft" | "stuck_hard". */
+    outcome: text("outcome").notNull(),
+    finalUnsat: integer("final_unsat").notNull(),
+    totalSteps: integer("total_steps").notNull(),
+    /** Number of variables in the run's synthetic 3-SAT instance. */
+    nVars: integer("n_vars").notNull(),
+    /** Number of clauses in the run's synthetic 3-SAT instance. */
+    nClauses: integer("n_clauses").notNull(),
+    /** Deterministic seed used for the instance + assignment. */
+    seed: integer("seed").notNull(),
+    /** Field snapshot interval (every N solver steps). */
+    logInterval: integer("log_interval").notNull(),
+    /** How many variables were sampled per snapshot. */
+    sampleSize: integer("sample_size").notNull(),
+    /**
+     * Per-snapshot field state. One entry every `logInterval` steps.
+     * Each entry has the full Higgs field vector for that step.
+     */
+    snapshots: jsonb("snapshots")
+      .$type<
+        Array<{
+          step: number;
+          unsat: number;
+          fieldStrength: number;
+          fieldVariance: number;
+          orderParameter: number;
+          massMin: number;
+          massMax: number;
+          heavyNegFrac: number;
+          neutralFrac: number;
+          heavyPosFrac: number;
+        }>
+      >()
+      .notNull()
+      .default([]),
+    durationMs: integer("duration_ms").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => ({
+    outcomeIdx: index("ephemeroi_higgs_runs_outcome_idx").on(t.outcome),
+    createdAtIdx: index("ephemeroi_higgs_runs_created_at_idx").on(t.createdAt),
+  }),
+);
+
 export const ephemeroiSpectralInvocationsTable = pgTable(
   "ephemeroi_spectral_invocations",
   {

@@ -3,6 +3,12 @@ import { askDon } from "./don";
 import { bus } from "./bus";
 import { sendTelegramText } from "./telegram";
 import { recordBiomimeticField } from "./cognitiveField";
+import {
+  HiggsLogger,
+  classifyOutcome,
+  type HiggsOutcome,
+} from "./higgs";
+import { insertHiggsRun } from "./higgsStore";
 
 /**
  * Biomimetic Constraint-Field Solver — v0.11.3
@@ -56,6 +62,20 @@ export interface BiomimeticOptions {
   temperature?: number;
   /** Edict cascade cap (default 7). */
   edictCap?: number;
+  /**
+   * Disable per-step Higgs phase-transition logging. Default: enabled.
+   * When enabled, the run records a `HiggsRun` row to
+   * `ephemeroi_higgs_runs` with the order-parameter trajectory.
+   */
+  higgsEnabled?: boolean;
+  /** Capture a Higgs snapshot every N solver steps (default 10). */
+  higgsLogInterval?: number;
+  /**
+   * Variables sampled per Higgs snapshot. Bounded above by `n`. The
+   * default is `min(30, n)` — enough to estimate field stats without
+   * paying O(n) flips per step on large instances.
+   */
+  higgsSampleSize?: number;
 }
 
 export interface StepEvent {
@@ -96,6 +116,20 @@ export interface BiomimeticResult {
   m: number;
   /** Wall time spent inside the run, in ms. */
   durationMs: number;
+  /**
+   * Persisted Higgs run id, when Higgs logging was enabled and the
+   * insert succeeded. Null when Higgs is disabled or the insert failed
+   * (errors don't bubble — the run still returns).
+   */
+  higgsRunId: number | null;
+  /**
+   * Outcome bucket the run was classified into:
+   *   - `solved`     when finalUnsat === 0
+   *   - `stuck_soft` when 0 < finalUnsat <= 3
+   *   - `stuck_hard` when finalUnsat > 3
+   * Null when Higgs is disabled.
+   */
+  higgsOutcome: HiggsOutcome | null;
 }
 
 // ===== Public entry point =====
@@ -121,6 +155,23 @@ export async function runBiomimetic(
   const rng = mulberry32(seed);
   const clauses = generate3SatProblem(n, m, rng);
   const assignment = randomAssignment(n, rng);
+
+  // Higgs phase-transition logger — records the per-step symmetry-breaking
+  // signal alongside the existing StepEvent timeline. Off-band from the
+  // solver: the logger never mutates `assignment` (it flips and restores
+  // each sampled variable) and never throws into the loop.
+  const higgsEnabled = opts.higgsEnabled !== false;
+  const higgsLogInterval = Math.max(1, opts.higgsLogInterval ?? 10);
+  const higgsSampleSize = Math.max(
+    1,
+    Math.min(opts.higgsSampleSize ?? 30, n),
+  );
+  const higgsLogger = higgsEnabled
+    ? new HiggsLogger(n, clauses, rng, {
+        logInterval: higgsLogInterval,
+        sampleSize: higgsSampleSize,
+      })
+    : null;
 
   const timeline: StepEvent[] = [];
   let edictCount = 0;
@@ -229,10 +280,41 @@ export async function runBiomimetic(
         payload: { source: "biomimetic", ...evt },
       });
     }
+
+    // Higgs snapshot — runs every `higgsLogInterval` steps internally;
+    // call unconditionally so the logger owns the cadence.
+    higgsLogger?.step(assignment, unsat);
   }
 
   const finalUnsat = unsat;
   const solved = finalUnsat === 0;
+
+  // Persist the Higgs trajectory before any narration / Telegram side
+  // effects so the row is in the DB even if those fail. Errors are
+  // caught — Higgs is a diagnostic, not a load-bearing feature.
+  let higgsRunId: number | null = null;
+  let higgsOutcome: HiggsOutcome | null = null;
+  if (higgsLogger) {
+    higgsOutcome = classifyOutcome(solved, finalUnsat);
+    const higgsRun = higgsLogger.finalize(higgsOutcome, finalUnsat);
+    try {
+      const inserted = await insertHiggsRun({
+        outcome: higgsOutcome,
+        finalUnsat,
+        totalSteps: higgsRun.totalSteps,
+        nVars: n,
+        nClauses: m,
+        seed,
+        logInterval: higgsLogInterval,
+        sampleSize: higgsSampleSize,
+        snapshots: higgsRun.snapshots,
+        durationMs: Date.now() - t0,
+      });
+      higgsRunId = inserted.id;
+    } catch (err) {
+      logger.warn({ err }, "Biomimetic: Higgs run persistence failed");
+    }
+  }
 
   // 5. Narration on the most interesting moment of the run.
   let donText: string | null = null;
@@ -330,6 +412,8 @@ export async function runBiomimetic(
     n,
     m,
     durationMs: Date.now() - t0,
+    higgsRunId,
+    higgsOutcome,
   };
 }
 

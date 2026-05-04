@@ -1001,6 +1001,22 @@ export interface EphemeroiBiomimeticStepEvent {
 }
 
 /**
+ * Outcome classification used by the Higgs analyzer.
+  * `solved`     — finalUnsat === 0
+  * `stuck_soft` — 0 < finalUnsat <= 3
+  * `stuck_hard` — finalUnsat > 3
+
+ */
+export type EphemeroiHiggsOutcome =
+  (typeof EphemeroiHiggsOutcome)[keyof typeof EphemeroiHiggsOutcome];
+
+export const EphemeroiHiggsOutcome = {
+  solved: "solved",
+  stuck_soft: "stuck_soft",
+  stuck_hard: "stuck_hard",
+} as const;
+
+/**
  * Outcome of one biomimetic protocol run.
  */
 export interface EphemeroiBiomimeticResult {
@@ -1016,6 +1032,129 @@ export interface EphemeroiBiomimeticResult {
   n: number;
   m: number;
   durationMs: number;
+  /** id of the persisted Higgs run row, or null if Higgs was disabled / persistence failed. */
+  higgsRunId: number | null;
+  /** Outcome bucket, or null when Higgs was disabled. */
+  higgsOutcome: EphemeroiHiggsOutcome | null;
+}
+
+/**
+ * Symmetry-breaking field state at a single solver step.
+ */
+export interface EphemeroiHiggsSnapshot {
+  step: number;
+  unsat: number;
+  /** Mean per-variable mass — average resistance of the field. */
+  fieldStrength: number;
+  /** Variance of per-variable mass. */
+  fieldVariance: number;
+  /** Symmetry-breaking signal — `fieldVariance / (|fieldStrength| + ε)`.
+Stays near zero in the symmetric phase and rises as the field
+structures itself.
+ */
+  orderParameter: number;
+  massMin: number;
+  massMax: number;
+  /** Fraction of sampled vars with mass < -1 (strongly mobile). */
+  heavyNegFrac: number;
+  /** Fraction of sampled vars with -1 <= mass <= 1. */
+  neutralFrac: number;
+  /** Fraction of sampled vars with mass > 1 (strongly locked). */
+  heavyPosFrac: number;
+}
+
+/**
+ * One row in the runs list (no snapshots blob).
+ */
+export interface EphemeroiHiggsRunSummary {
+  id: number;
+  outcome: EphemeroiHiggsOutcome;
+  finalUnsat: number;
+  totalSteps: number;
+  nVars: number;
+  nClauses: number;
+  durationMs: number;
+  snapshotCount: number;
+  createdAt: string;
+}
+
+/**
+ * Full Higgs run row including the snapshot trajectory.
+ */
+export interface EphemeroiHiggsRun {
+  id: number;
+  outcome: EphemeroiHiggsOutcome;
+  finalUnsat: number;
+  totalSteps: number;
+  nVars: number;
+  nClauses: number;
+  seed: number;
+  logInterval: number;
+  sampleSize: number;
+  durationMs: number;
+  snapshots: EphemeroiHiggsSnapshot[];
+  createdAt: string;
+}
+
+export interface EphemeroiHiggsRunsList {
+  runs: EphemeroiHiggsRunSummary[];
+}
+
+export interface EphemeroiHiggsAnalyzeOptions {
+  /**
+   * How many recent runs to feed the analyzer.
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+}
+
+export interface EphemeroiHiggsProfilePoint {
+  step: number;
+  meanOrderParameter: number;
+  meanFieldStrength: number;
+  sampleCount: number;
+}
+
+export interface EphemeroiHiggsTransitionDetectionEntry {
+  outcome: EphemeroiHiggsOutcome;
+  /** Mean step at which OP first exceeded `threshold` (null when no run crossed). */
+  meanCrossingStep: number | null;
+  count: number;
+  threshold: number;
+}
+
+export interface EphemeroiHiggsDivergencePoint {
+  step: number;
+  /** Absolute difference between meanOP(solved) and meanOP(stuck_hard) at this step. */
+  gap: number;
+}
+
+export type EphemeroiHiggsAnalysisReportByOutcome = {
+  solved: number;
+  stuck_soft: number;
+  stuck_hard: number;
+};
+
+export type EphemeroiHiggsAnalysisReportProfiles = {
+  solved: EphemeroiHiggsProfilePoint[];
+  stuck_soft: EphemeroiHiggsProfilePoint[];
+  stuck_hard: EphemeroiHiggsProfilePoint[];
+};
+
+/**
+ * Cross-run analysis output. Empty buckets just produce empty arrays.
+ */
+export interface EphemeroiHiggsAnalysisReport {
+  totalRuns: number;
+  byOutcome: EphemeroiHiggsAnalysisReportByOutcome;
+  opThreshold: number;
+  profiles: EphemeroiHiggsAnalysisReportProfiles;
+  transitionDetection: EphemeroiHiggsTransitionDetectionEntry[];
+  divergence: EphemeroiHiggsDivergencePoint[];
+  maxDivergence: EphemeroiHiggsDivergencePoint | null;
+  /** First step at which the solved/stuck_hard divergence exceeds 1.0. */
+  earlyWarningStep: number | null;
 }
 
 /**
@@ -1091,4 +1230,17 @@ export type ListEphemeroiSpectralInvocationsParams = {
    * @maximum 200
    */
   limit?: number;
+};
+
+export type ListEphemeroiHiggsRunsParams = {
+  /**
+   * @minimum 1
+   * @maximum 500
+   */
+  limit?: number;
+  outcome?: EphemeroiHiggsOutcome;
+};
+
+export type GetEphemeroiHiggsRun404 = {
+  error: string;
 };

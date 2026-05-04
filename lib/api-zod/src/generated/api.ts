@@ -1280,6 +1280,19 @@ export const RunEphemeroiBiomimeticResponse = zod
     n: zod.number(),
     m: zod.number(),
     durationMs: zod.number(),
+    higgsRunId: zod
+      .number()
+      .nullable()
+      .describe(
+        "id of the persisted Higgs run row, or null if Higgs was disabled \/ persistence failed.",
+      ),
+    higgsOutcome: zod
+      .enum(["solved", "stuck_soft", "stuck_hard"])
+      .describe(
+        "Outcome classification used by the Higgs analyzer.\n  \* `solved`     — finalUnsat === 0\n  \* `stuck_soft` — 0 < finalUnsat <= 3\n  \* `stuck_hard` — finalUnsat > 3\n",
+      )
+      .nullable()
+      .describe("Outcome bucket, or null when Higgs was disabled."),
   })
   .describe("Outcome of one biomimetic protocol run.");
 
@@ -2044,4 +2057,214 @@ export const TriggerEphemeroiSpectralSelfBuildCycleResponse = zod
   })
   .describe(
     "Result of a single on-demand cycle. `result` is the same\n4-value enum as `lastCycleResult`. `invocations` is every step\nthat actually ran during the cycle (1–4 entries).\n",
+  );
+
+/**
+ * Returns a summary of recent biomimetic runs that recorded a
+Higgs trajectory (most recent first). Excludes the snapshot
+blob to keep the response small — fetch a single run by id to
+get the full trajectory.
+
+ * @summary List Higgs Phase Transition runs
+ */
+export const listEphemeroiHiggsRunsQueryLimitDefault = 50;
+export const listEphemeroiHiggsRunsQueryLimitMax = 500;
+
+export const ListEphemeroiHiggsRunsQueryParams = zod.object({
+  limit: zod.coerce
+    .number()
+    .min(1)
+    .max(listEphemeroiHiggsRunsQueryLimitMax)
+    .default(listEphemeroiHiggsRunsQueryLimitDefault),
+  outcome: zod.enum(["solved", "stuck_soft", "stuck_hard"]).optional(),
+});
+
+export const ListEphemeroiHiggsRunsResponse = zod.object({
+  runs: zod.array(
+    zod
+      .object({
+        id: zod.number(),
+        outcome: zod
+          .enum(["solved", "stuck_soft", "stuck_hard"])
+          .describe(
+            "Outcome classification used by the Higgs analyzer.\n  \* `solved`     — finalUnsat === 0\n  \* `stuck_soft` — 0 < finalUnsat <= 3\n  \* `stuck_hard` — finalUnsat > 3\n",
+          ),
+        finalUnsat: zod.number(),
+        totalSteps: zod.number(),
+        nVars: zod.number(),
+        nClauses: zod.number(),
+        durationMs: zod.number(),
+        snapshotCount: zod.number(),
+        createdAt: zod.coerce.date(),
+      })
+      .describe("One row in the runs list (no snapshots blob)."),
+  ),
+});
+
+/**
+ * @summary Fetch a single Higgs run with its full snapshot trajectory
+ */
+
+export const GetEphemeroiHiggsRunParams = zod.object({
+  id: zod.coerce.number().min(1),
+});
+
+export const GetEphemeroiHiggsRunResponse = zod
+  .object({
+    id: zod.number(),
+    outcome: zod
+      .enum(["solved", "stuck_soft", "stuck_hard"])
+      .describe(
+        "Outcome classification used by the Higgs analyzer.\n  \* `solved`     — finalUnsat === 0\n  \* `stuck_soft` — 0 < finalUnsat <= 3\n  \* `stuck_hard` — finalUnsat > 3\n",
+      ),
+    finalUnsat: zod.number(),
+    totalSteps: zod.number(),
+    nVars: zod.number(),
+    nClauses: zod.number(),
+    seed: zod.number(),
+    logInterval: zod.number(),
+    sampleSize: zod.number(),
+    durationMs: zod.number(),
+    snapshots: zod.array(
+      zod
+        .object({
+          step: zod.number(),
+          unsat: zod.number(),
+          fieldStrength: zod
+            .number()
+            .describe(
+              "Mean per-variable mass — average resistance of the field.",
+            ),
+          fieldVariance: zod
+            .number()
+            .describe("Variance of per-variable mass."),
+          orderParameter: zod
+            .number()
+            .describe(
+              "Symmetry-breaking signal — `fieldVariance \/ (|fieldStrength| + ε)`.\nStays near zero in the symmetric phase and rises as the field\nstructures itself.\n",
+            ),
+          massMin: zod.number(),
+          massMax: zod.number(),
+          heavyNegFrac: zod
+            .number()
+            .describe(
+              "Fraction of sampled vars with mass < -1 (strongly mobile).",
+            ),
+          neutralFrac: zod
+            .number()
+            .describe("Fraction of sampled vars with -1 <= mass <= 1."),
+          heavyPosFrac: zod
+            .number()
+            .describe(
+              "Fraction of sampled vars with mass > 1 (strongly locked).",
+            ),
+        })
+        .describe("Symmetry-breaking field state at a single solver step."),
+    ),
+    createdAt: zod.coerce.date(),
+  })
+  .describe("Full Higgs run row including the snapshot trajectory.");
+
+/**
+ * Aggregates the most recent N runs into per-outcome order-parameter
+profiles, detects the threshold-crossing step per outcome, and
+computes the divergence between solved and stuck_hard profiles —
+the early-warning signal that distinguishes runs before they
+complete.
+
+ * @summary Cross-run Higgs phase-transition analysis
+ */
+export const analyzeEphemeroiHiggsBodyLimitDefault = 200;
+export const analyzeEphemeroiHiggsBodyLimitMax = 500;
+
+export const AnalyzeEphemeroiHiggsBody = zod.object({
+  limit: zod
+    .number()
+    .min(1)
+    .max(analyzeEphemeroiHiggsBodyLimitMax)
+    .default(analyzeEphemeroiHiggsBodyLimitDefault)
+    .describe("How many recent runs to feed the analyzer."),
+});
+
+export const AnalyzeEphemeroiHiggsResponse = zod
+  .object({
+    totalRuns: zod.number(),
+    byOutcome: zod.object({
+      solved: zod.number(),
+      stuck_soft: zod.number(),
+      stuck_hard: zod.number(),
+    }),
+    opThreshold: zod.number(),
+    profiles: zod.object({
+      solved: zod.array(
+        zod.object({
+          step: zod.number(),
+          meanOrderParameter: zod.number(),
+          meanFieldStrength: zod.number(),
+          sampleCount: zod.number(),
+        }),
+      ),
+      stuck_soft: zod.array(
+        zod.object({
+          step: zod.number(),
+          meanOrderParameter: zod.number(),
+          meanFieldStrength: zod.number(),
+          sampleCount: zod.number(),
+        }),
+      ),
+      stuck_hard: zod.array(
+        zod.object({
+          step: zod.number(),
+          meanOrderParameter: zod.number(),
+          meanFieldStrength: zod.number(),
+          sampleCount: zod.number(),
+        }),
+      ),
+    }),
+    transitionDetection: zod.array(
+      zod.object({
+        outcome: zod
+          .enum(["solved", "stuck_soft", "stuck_hard"])
+          .describe(
+            "Outcome classification used by the Higgs analyzer.\n  \* `solved`     — finalUnsat === 0\n  \* `stuck_soft` — 0 < finalUnsat <= 3\n  \* `stuck_hard` — finalUnsat > 3\n",
+          ),
+        meanCrossingStep: zod
+          .number()
+          .nullable()
+          .describe(
+            "Mean step at which OP first exceeded `threshold` (null when no run crossed).",
+          ),
+        count: zod.number(),
+        threshold: zod.number(),
+      }),
+    ),
+    divergence: zod.array(
+      zod.object({
+        step: zod.number(),
+        gap: zod
+          .number()
+          .describe(
+            "Absolute difference between meanOP(solved) and meanOP(stuck_hard) at this step.",
+          ),
+      }),
+    ),
+    maxDivergence: zod
+      .object({
+        step: zod.number(),
+        gap: zod
+          .number()
+          .describe(
+            "Absolute difference between meanOP(solved) and meanOP(stuck_hard) at this step.",
+          ),
+      })
+      .nullable(),
+    earlyWarningStep: zod
+      .number()
+      .nullable()
+      .describe(
+        "First step at which the solved\/stuck_hard divergence exceeds 1.0.",
+      ),
+  })
+  .describe(
+    "Cross-run analysis output. Empty buckets just produce empty arrays.",
   );

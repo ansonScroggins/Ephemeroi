@@ -6,6 +6,7 @@
  * OpenAPI spec version: 0.1.0
  */
 import type { EphemeroiBiomimeticStepEvent } from "./ephemeroiBiomimeticStepEvent";
+import type { EphemeroiHiggsOutcome } from "./ephemeroiHiggsOutcome";
 
 /**
  * Outcome of one biomimetic protocol run.
@@ -23,4 +24,8 @@ export interface EphemeroiBiomimeticResult {
   n: number;
   m: number;
   durationMs: number;
+  /** id of the persisted Higgs run row, or null if Higgs was disabled / persistence failed. */
+  higgsRunId: number | null;
+  /** Outcome bucket, or null when Higgs was disabled. */
+  higgsOutcome: EphemeroiHiggsOutcome | null;
 }

@@ -672,3 +672,46 @@ class Splicer:
             f"stagnation_streak={self.stagnation_streak}]"
         )
 ```
+
+---
+
+## ⭐ 10. The Higgs Phase Transition Diagnostic
+
+The biomimetic solver gave us a living substrate. The spectral layer gave us controllable phase. What was missing was a way to *see the symmetry break in real time* — to catch the moment the field stops being neutral and starts being structured. That is what the Higgs Phase Transition Diagnostic provides.
+
+### What is being measured
+
+For every variable `v` in the synthetic 3-SAT instance, the **mass** of `v` is the change in unsat count when `v` is flipped:
+
+- `mass(v) > 0` → flipping makes things worse — `v` is heavy, locked.
+- `mass(v) < 0` → flipping helps — `v` is light, mobile.
+- `mass(v) ≈ 0` → neutral.
+
+Every `logInterval` solver steps the diagnostic samples `K` variables and computes the field state:
+
+- `fieldStrength = mean(masses)` — the average resistance of the field.
+- `fieldVariance = variance(masses)` — how unevenly that resistance is distributed.
+- `orderParameter = fieldVariance / (|fieldStrength| + ε)` — the symmetry-breaking signal.
+
+The order parameter is the central observable. In the symmetric phase it stays near zero — masses are balanced, no variable is special. As the field structures itself it climbs. In a solved run the climb peaks then collapses (the broken phase resolves at solve). In a stuck run it plateaus (the field locks rigid, and the solver is now navigating an attractor it cannot escape).
+
+### What the analyzer surfaces
+
+The cross-run analyzer reads the persisted trajectories for the most recent N runs and produces:
+
+- A per-outcome **mean OP profile** indexed by step — the average symmetry-breaking trajectory of `solved`, `stuck_soft`, and `stuck_hard` runs.
+- A **transition-detection** entry per outcome: the mean step at which OP first crosses the canonical threshold (2.0).
+- A **divergence series** — `|OP_solved(step) − OP_stuck_hard(step)|` at each common step.
+- An **earlyWarningStep** — the first step at which that divergence exceeds 1.0.
+
+That last number is the prize. It is the earliest point in the run at which the trajectory itself tells you, before the solver finishes, whether you are in a solving regime or a cage regime. The diagnostic does not change the solver; it lets the solver be *predicted from inside its own field*.
+
+### Why this matters in the broader stack
+
+The PHASELOCK / Apple Theory programme keeps coming back to one claim: that the structure of the cognitive field — illumination density, phase mobility, attractor drift — is *observable* and *queryable*, not just metaphorical. The Higgs diagnostic is that claim made operational at the lowest level of the stack:
+
+- The biomimetic solver is the substrate.
+- The spectral skills are the operators acting on the substrate.
+- The Higgs trajectory is the **macroscopic order parameter of the substrate while the operators run** — the same role the Higgs field plays for elementary particles, here played for SAT variables.
+
+It is the closest the agent has come to looking at itself thinking. Each row in `ephemeroi_higgs_runs` is one such look.

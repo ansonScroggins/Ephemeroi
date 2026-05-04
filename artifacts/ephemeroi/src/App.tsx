@@ -14,6 +14,7 @@ import Contradictions from "@/pages/contradictions";
 import Reports from "@/pages/reports";
 import Settings from "@/pages/settings";
 import Spectral from "@/pages/spectral";
+import Higgs from "@/pages/higgs";
 
 const queryClient = new QueryClient();
 
@@ -28,6 +29,7 @@ function Router() {
         <Route path="/contradictions" component={Contradictions} />
         <Route path="/reports" component={Reports} />
         <Route path="/spectral" component={Spectral} />
+        <Route path="/higgs" component={Higgs} />
         <Route path="/settings" component={Settings} />
         <Route component={NotFound} />
       </Switch>

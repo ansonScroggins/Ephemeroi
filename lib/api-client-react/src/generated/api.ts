@@ -24,6 +24,10 @@ import type {
   EphemeroiCognitiveFieldResponse,
   EphemeroiContradictionsResponse,
   EphemeroiCycleResult,
+  EphemeroiHiggsAnalysisReport,
+  EphemeroiHiggsAnalyzeOptions,
+  EphemeroiHiggsRun,
+  EphemeroiHiggsRunsList,
   EphemeroiObservationsResponse,
   EphemeroiReportsResponse,
   EphemeroiSelfImprovementResult,
@@ -49,8 +53,10 @@ import type {
   ErrorResponse,
   ExplorationRequest,
   ExplorationResponse,
+  GetEphemeroiHiggsRun404,
   HealthStatus,
   ListEphemeroiBeliefsBySourceParams,
+  ListEphemeroiHiggsRunsParams,
   ListEphemeroiObservationsParams,
   ListEphemeroiReportsParams,
   ListEphemeroiSpectralInvocationsParams,
@@ -2976,4 +2982,296 @@ export const useTriggerEphemeroiSpectralSelfBuildCycle = <
   return useMutation(
     getTriggerEphemeroiSpectralSelfBuildCycleMutationOptions(options),
   );
+};
+
+/**
+ * Returns a summary of recent biomimetic runs that recorded a
+Higgs trajectory (most recent first). Excludes the snapshot
+blob to keep the response small — fetch a single run by id to
+get the full trajectory.
+
+ * @summary List Higgs Phase Transition runs
+ */
+export const getListEphemeroiHiggsRunsUrl = (
+  params?: ListEphemeroiHiggsRunsParams,
+) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/ephemeroi/higgs/runs?${stringifiedParams}`
+    : `/api/ephemeroi/higgs/runs`;
+};
+
+export const listEphemeroiHiggsRuns = async (
+  params?: ListEphemeroiHiggsRunsParams,
+  options?: RequestInit,
+): Promise<EphemeroiHiggsRunsList> => {
+  return customFetch<EphemeroiHiggsRunsList>(
+    getListEphemeroiHiggsRunsUrl(params),
+    {
+      ...options,
+      method: "GET",
+    },
+  );
+};
+
+export const getListEphemeroiHiggsRunsQueryKey = (
+  params?: ListEphemeroiHiggsRunsParams,
+) => {
+  return [`/api/ephemeroi/higgs/runs`, ...(params ? [params] : [])] as const;
+};
+
+export const getListEphemeroiHiggsRunsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listEphemeroiHiggsRuns>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListEphemeroiHiggsRunsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEphemeroiHiggsRuns>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListEphemeroiHiggsRunsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listEphemeroiHiggsRuns>>
+  > = ({ signal }) =>
+    listEphemeroiHiggsRuns(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listEphemeroiHiggsRuns>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListEphemeroiHiggsRunsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listEphemeroiHiggsRuns>>
+>;
+export type ListEphemeroiHiggsRunsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List Higgs Phase Transition runs
+ */
+
+export function useListEphemeroiHiggsRuns<
+  TData = Awaited<ReturnType<typeof listEphemeroiHiggsRuns>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListEphemeroiHiggsRunsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listEphemeroiHiggsRuns>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListEphemeroiHiggsRunsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * @summary Fetch a single Higgs run with its full snapshot trajectory
+ */
+export const getGetEphemeroiHiggsRunUrl = (id: number) => {
+  return `/api/ephemeroi/higgs/runs/${id}`;
+};
+
+export const getEphemeroiHiggsRun = async (
+  id: number,
+  options?: RequestInit,
+): Promise<EphemeroiHiggsRun> => {
+  return customFetch<EphemeroiHiggsRun>(getGetEphemeroiHiggsRunUrl(id), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getGetEphemeroiHiggsRunQueryKey = (id: number) => {
+  return [`/api/ephemeroi/higgs/runs/${id}`] as const;
+};
+
+export const getGetEphemeroiHiggsRunQueryOptions = <
+  TData = Awaited<ReturnType<typeof getEphemeroiHiggsRun>>,
+  TError = ErrorType<GetEphemeroiHiggsRun404>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getEphemeroiHiggsRun>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getGetEphemeroiHiggsRunQueryKey(id);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof getEphemeroiHiggsRun>>
+  > = ({ signal }) => getEphemeroiHiggsRun(id, { signal, ...requestOptions });
+
+  return {
+    queryKey,
+    queryFn,
+    enabled: !!id,
+    ...queryOptions,
+  } as UseQueryOptions<
+    Awaited<ReturnType<typeof getEphemeroiHiggsRun>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type GetEphemeroiHiggsRunQueryResult = NonNullable<
+  Awaited<ReturnType<typeof getEphemeroiHiggsRun>>
+>;
+export type GetEphemeroiHiggsRunQueryError = ErrorType<GetEphemeroiHiggsRun404>;
+
+/**
+ * @summary Fetch a single Higgs run with its full snapshot trajectory
+ */
+
+export function useGetEphemeroiHiggsRun<
+  TData = Awaited<ReturnType<typeof getEphemeroiHiggsRun>>,
+  TError = ErrorType<GetEphemeroiHiggsRun404>,
+>(
+  id: number,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof getEphemeroiHiggsRun>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getGetEphemeroiHiggsRunQueryOptions(id, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+/**
+ * Aggregates the most recent N runs into per-outcome order-parameter
+profiles, detects the threshold-crossing step per outcome, and
+computes the divergence between solved and stuck_hard profiles —
+the early-warning signal that distinguishes runs before they
+complete.
+
+ * @summary Cross-run Higgs phase-transition analysis
+ */
+export const getAnalyzeEphemeroiHiggsUrl = () => {
+  return `/api/ephemeroi/higgs/analyze`;
+};
+
+export const analyzeEphemeroiHiggs = async (
+  ephemeroiHiggsAnalyzeOptions?: EphemeroiHiggsAnalyzeOptions,
+  options?: RequestInit,
+): Promise<EphemeroiHiggsAnalysisReport> => {
+  return customFetch<EphemeroiHiggsAnalysisReport>(
+    getAnalyzeEphemeroiHiggsUrl(),
+    {
+      ...options,
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...options?.headers },
+      body: JSON.stringify(ephemeroiHiggsAnalyzeOptions),
+    },
+  );
+};
+
+export const getAnalyzeEphemeroiHiggsMutationOptions = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof analyzeEphemeroiHiggs>>,
+    TError,
+    { data: BodyType<EphemeroiHiggsAnalyzeOptions> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof analyzeEphemeroiHiggs>>,
+  TError,
+  { data: BodyType<EphemeroiHiggsAnalyzeOptions> },
+  TContext
+> => {
+  const mutationKey = ["analyzeEphemeroiHiggs"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof analyzeEphemeroiHiggs>>,
+    { data: BodyType<EphemeroiHiggsAnalyzeOptions> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return analyzeEphemeroiHiggs(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type AnalyzeEphemeroiHiggsMutationResult = NonNullable<
+  Awaited<ReturnType<typeof analyzeEphemeroiHiggs>>
+>;
+export type AnalyzeEphemeroiHiggsMutationBody =
+  BodyType<EphemeroiHiggsAnalyzeOptions>;
+export type AnalyzeEphemeroiHiggsMutationError = ErrorType<unknown>;
+
+/**
+ * @summary Cross-run Higgs phase-transition analysis
+ */
+export const useAnalyzeEphemeroiHiggs = <
+  TError = ErrorType<unknown>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof analyzeEphemeroiHiggs>>,
+    TError,
+    { data: BodyType<EphemeroiHiggsAnalyzeOptions> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof analyzeEphemeroiHiggs>>,
+  TError,
+  { data: BodyType<EphemeroiHiggsAnalyzeOptions> },
+  TContext
+> => {
+  return useMutation(getAnalyzeEphemeroiHiggsMutationOptions(options));
 };

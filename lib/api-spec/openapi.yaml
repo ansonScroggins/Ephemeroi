@@ -765,6 +765,83 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/EphemeroiSpectralSelfBuildCycleResponse"
+  /ephemeroi/higgs/runs:
+    get:
+      operationId: listEphemeroiHiggsRuns
+      tags: [ephemeroi]
+      summary: List Higgs Phase Transition runs
+      description: |
+        Returns a summary of recent biomimetic runs that recorded a
+        Higgs trajectory (most recent first). Excludes the snapshot
+        blob to keep the response small — fetch a single run by id to
+        get the full trajectory.
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 500, default: 50 }
+        - name: outcome
+          in: query
+          required: false
+          schema:
+            $ref: "#/components/schemas/EphemeroiHiggsOutcome"
+      responses:
+        "200":
+          description: Run summaries
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiHiggsRunsList"
+  /ephemeroi/higgs/runs/{id}:
+    get:
+      operationId: getEphemeroiHiggsRun
+      tags: [ephemeroi]
+      summary: Fetch a single Higgs run with its full snapshot trajectory
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: integer, minimum: 1 }
+      responses:
+        "200":
+          description: Higgs run with snapshots
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiHiggsRun"
+        "404":
+          description: Run not found
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+                required: [error]
+  /ephemeroi/higgs/analyze:
+    post:
+      operationId: analyzeEphemeroiHiggs
+      tags: [ephemeroi]
+      summary: Cross-run Higgs phase-transition analysis
+      description: |
+        Aggregates the most recent N runs into per-outcome order-parameter
+        profiles, detects the threshold-crossing step per outcome, and
+        computes the divergence between solved and stuck_hard profiles —
+        the early-warning signal that distinguishes runs before they
+        complete.
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EphemeroiHiggsAnalyzeOptions"
+      responses:
+        "200":
+          description: Cross-run analysis report
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/EphemeroiHiggsAnalysisReport"
 components:
   schemas:
     HealthStatus:
@@ -2084,7 +2161,191 @@ components:
         n: { type: integer }
         m: { type: integer }
         durationMs: { type: integer }
-      required: [solved, finalUnsat, steps, edictCount, cageEvents, invariantViolations, timeline, donNarration, formatted, n, m, durationMs]
+        higgsRunId:
+          type: integer
+          nullable: true
+          description: id of the persisted Higgs run row, or null if Higgs was disabled / persistence failed.
+        higgsOutcome:
+          allOf:
+            - $ref: "#/components/schemas/EphemeroiHiggsOutcome"
+          nullable: true
+          description: Outcome bucket, or null when Higgs was disabled.
+      required: [solved, finalUnsat, steps, edictCount, cageEvents, invariantViolations, timeline, donNarration, formatted, n, m, durationMs, higgsRunId, higgsOutcome]
+
+    EphemeroiHiggsOutcome:
+      type: string
+      enum: [solved, stuck_soft, stuck_hard]
+      description: |
+        Outcome classification used by the Higgs analyzer.
+          * `solved`     — finalUnsat === 0
+          * `stuck_soft` — 0 < finalUnsat <= 3
+          * `stuck_hard` — finalUnsat > 3
+
+    EphemeroiHiggsSnapshot:
+      type: object
+      description: Symmetry-breaking field state at a single solver step.
+      properties:
+        step: { type: integer }
+        unsat: { type: integer }
+        fieldStrength:
+          type: number
+          description: Mean per-variable mass — average resistance of the field.
+        fieldVariance:
+          type: number
+          description: Variance of per-variable mass.
+        orderParameter:
+          type: number
+          description: |
+            Symmetry-breaking signal — `fieldVariance / (|fieldStrength| + ε)`.
+            Stays near zero in the symmetric phase and rises as the field
+            structures itself.
+        massMin: { type: number }
+        massMax: { type: number }
+        heavyNegFrac:
+          type: number
+          description: Fraction of sampled vars with mass < -1 (strongly mobile).
+        neutralFrac:
+          type: number
+          description: Fraction of sampled vars with -1 <= mass <= 1.
+        heavyPosFrac:
+          type: number
+          description: Fraction of sampled vars with mass > 1 (strongly locked).
+      required: [step, unsat, fieldStrength, fieldVariance, orderParameter, massMin, massMax, heavyNegFrac, neutralFrac, heavyPosFrac]
+
+    EphemeroiHiggsRunSummary:
+      type: object
+      description: One row in the runs list (no snapshots blob).
+      properties:
+        id: { type: integer }
+        outcome:
+          $ref: "#/components/schemas/EphemeroiHiggsOutcome"
+        finalUnsat: { type: integer }
+        totalSteps: { type: integer }
+        nVars: { type: integer }
+        nClauses: { type: integer }
+        durationMs: { type: integer }
+        snapshotCount: { type: integer }
+        createdAt: { type: string, format: date-time }
+      required: [id, outcome, finalUnsat, totalSteps, nVars, nClauses, durationMs, snapshotCount, createdAt]
+
+    EphemeroiHiggsRun:
+      type: object
+      description: Full Higgs run row including the snapshot trajectory.
+      properties:
+        id: { type: integer }
+        outcome:
+          $ref: "#/components/schemas/EphemeroiHiggsOutcome"
+        finalUnsat: { type: integer }
+        totalSteps: { type: integer }
+        nVars: { type: integer }
+        nClauses: { type: integer }
+        seed: { type: integer }
+        logInterval: { type: integer }
+        sampleSize: { type: integer }
+        durationMs: { type: integer }
+        snapshots:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiHiggsSnapshot"
+        createdAt: { type: string, format: date-time }
+      required: [id, outcome, finalUnsat, totalSteps, nVars, nClauses, seed, logInterval, sampleSize, durationMs, snapshots, createdAt]
+
+    EphemeroiHiggsRunsList:
+      type: object
+      properties:
+        runs:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiHiggsRunSummary"
+      required: [runs]
+
+    EphemeroiHiggsAnalyzeOptions:
+      type: object
+      properties:
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 500
+          default: 200
+          description: How many recent runs to feed the analyzer.
+
+    EphemeroiHiggsProfilePoint:
+      type: object
+      properties:
+        step: { type: integer }
+        meanOrderParameter: { type: number }
+        meanFieldStrength: { type: number }
+        sampleCount: { type: integer }
+      required: [step, meanOrderParameter, meanFieldStrength, sampleCount]
+
+    EphemeroiHiggsTransitionDetectionEntry:
+      type: object
+      properties:
+        outcome:
+          $ref: "#/components/schemas/EphemeroiHiggsOutcome"
+        meanCrossingStep:
+          type: number
+          nullable: true
+          description: Mean step at which OP first exceeded `threshold` (null when no run crossed).
+        count: { type: integer }
+        threshold: { type: number }
+      required: [outcome, meanCrossingStep, count, threshold]
+
+    EphemeroiHiggsDivergencePoint:
+      type: object
+      properties:
+        step: { type: integer }
+        gap:
+          type: number
+          description: "Absolute difference between meanOP(solved) and meanOP(stuck_hard) at this step."
+      required: [step, gap]
+
+    EphemeroiHiggsAnalysisReport:
+      type: object
+      description: Cross-run analysis output. Empty buckets just produce empty arrays.
+      properties:
+        totalRuns: { type: integer }
+        byOutcome:
+          type: object
+          properties:
+            solved: { type: integer }
+            stuck_soft: { type: integer }
+            stuck_hard: { type: integer }
+          required: [solved, stuck_soft, stuck_hard]
+        opThreshold: { type: number }
+        profiles:
+          type: object
+          properties:
+            solved:
+              type: array
+              items:
+                $ref: "#/components/schemas/EphemeroiHiggsProfilePoint"
+            stuck_soft:
+              type: array
+              items:
+                $ref: "#/components/schemas/EphemeroiHiggsProfilePoint"
+            stuck_hard:
+              type: array
+              items:
+                $ref: "#/components/schemas/EphemeroiHiggsProfilePoint"
+          required: [solved, stuck_soft, stuck_hard]
+        transitionDetection:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiHiggsTransitionDetectionEntry"
+        divergence:
+          type: array
+          items:
+            $ref: "#/components/schemas/EphemeroiHiggsDivergencePoint"
+        maxDivergence:
+          allOf:
+            - $ref: "#/components/schemas/EphemeroiHiggsDivergencePoint"
+          nullable: true
+        earlyWarningStep:
+          type: integer
+          nullable: true
+          description: First step at which the solved/stuck_hard divergence exceeds 1.0.
+      required: [totalRuns, byOutcome, opThreshold, profiles, transitionDetection, divergence, maxDivergence, earlyWarningStep]
 
     EphemeroiSelfImprovementResult:
       type: object

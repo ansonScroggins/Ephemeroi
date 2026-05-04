@@ -30,10 +30,22 @@ import {
   InvokeEphemeroiSpectralOperatorResponse,
   ListEphemeroiSpectralInvocationsQueryParams,
   ListEphemeroiSpectralInvocationsResponse,
+  ListEphemeroiHiggsRunsQueryParams,
+  ListEphemeroiHiggsRunsResponse,
+  GetEphemeroiHiggsRunParams,
+  GetEphemeroiHiggsRunResponse,
+  AnalyzeEphemeroiHiggsBody,
+  AnalyzeEphemeroiHiggsResponse,
 } from "@workspace/api-zod";
 import { runSelfImprovement, SelfImproveInFlightError } from "./selfImprove";
 import { runStreamIngest } from "./stream-ingest";
 import { runBiomimetic } from "./biomimetic";
+import { analyzeHiggsRuns, type HiggsOutcome } from "./higgs";
+import {
+  listHiggsRunSummaries,
+  getHiggsRun,
+  listHiggsRunsForAnalysis,
+} from "./higgsStore";
 import {
   getSettings,
   updateSettings,
@@ -817,6 +829,89 @@ function invocationToWire(
     invokedAt: inv.invokedAt.toISOString(),
   };
 }
+
+// ===== Higgs Phase Transition Diagnostic =====
+// Three routes around `ephemeroi_higgs_runs`. Each biomimetic run
+// auto-persists one row when Higgs is enabled (default), capturing the
+// per-step order-parameter trajectory. The /analyze route runs the
+// cross-run analyzer that distinguishes solved from stuck profiles.
+
+router.get("/ephemeroi/higgs/runs", async (req, res) => {
+  const parsed = ListEphemeroiHiggsRunsQueryParams.safeParse(req.query ?? {});
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "invalid_query",
+      issues: parsed.error.issues.map((i) => ({
+        path: i.path.join("."),
+        message: i.message,
+      })),
+    });
+    return;
+  }
+  try {
+    const limit = parsed.data.limit ?? 50;
+    const outcome = parsed.data.outcome as HiggsOutcome | undefined;
+    const summaries = await listHiggsRunSummaries(limit, outcome);
+    res.json(ListEphemeroiHiggsRunsResponse.parse({ runs: summaries }));
+  } catch (err) {
+    logger.error({ err }, "GET /ephemeroi/higgs/runs failed");
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+router.get("/ephemeroi/higgs/runs/:id", async (req, res) => {
+  const parsed = GetEphemeroiHiggsRunParams.safeParse(req.params);
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "invalid_params",
+      issues: parsed.error.issues.map((i) => ({
+        path: i.path.join("."),
+        message: i.message,
+      })),
+    });
+    return;
+  }
+  try {
+    const row = await getHiggsRun(parsed.data.id);
+    if (!row) {
+      res.status(404).json({ error: "not_found" });
+      return;
+    }
+    res.json(GetEphemeroiHiggsRunResponse.parse(row));
+  } catch (err) {
+    logger.error({ err }, "GET /ephemeroi/higgs/runs/:id failed");
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
+
+router.post("/ephemeroi/higgs/analyze", async (req, res) => {
+  const parsed = AnalyzeEphemeroiHiggsBody.safeParse(req.body ?? {});
+  if (!parsed.success) {
+    res.status(400).json({
+      error: "invalid_body",
+      issues: parsed.error.issues.map((i) => ({
+        path: i.path.join("."),
+        message: i.message,
+      })),
+    });
+    return;
+  }
+  try {
+    const limit = parsed.data.limit ?? 200;
+    const runs = await listHiggsRunsForAnalysis(limit);
+    const report = analyzeHiggsRuns(runs);
+    res.json(AnalyzeEphemeroiHiggsResponse.parse(report));
+  } catch (err) {
+    logger.error({ err }, "POST /ephemeroi/higgs/analyze failed");
+    res
+      .status(500)
+      .json({ error: err instanceof Error ? err.message : String(err) });
+  }
+});
 
 // ===== SSE: live event stream =====
 // NB: This route is intentionally outside the OpenAPI spec — SSE is not a
