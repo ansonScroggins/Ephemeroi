@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EphemeroiBiomimeticAdversarialRestartEvent } from "./ephemeroiBiomimeticAdversarialRestartEvent";
 import type { EphemeroiBiomimeticPhase } from "./ephemeroiBiomimeticPhase";
 import type { EphemeroiBiomimeticPhaseReason } from "./ephemeroiBiomimeticPhaseReason";
 
@@ -25,4 +26,8 @@ export interface EphemeroiBiomimeticStepEvent {
   opSlope: number | null;
   /** Reason the gate is in `phase` this step. Null when phase is null. */
   phaseReason: EphemeroiBiomimeticPhaseReason | null;
+  /** Populated only on the step where the OP-Triggered Adversarial
+Restart fired this run. Null on every other step.
+ */
+  adversarialRestart: EphemeroiBiomimeticAdversarialRestartEvent | null;
 }

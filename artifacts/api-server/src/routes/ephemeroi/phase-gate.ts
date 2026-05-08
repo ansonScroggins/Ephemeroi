@@ -187,6 +187,22 @@ export class PhaseGate {
     if (this.auxLog.length > 256) this.auxLog.shift();
   }
 
+  /**
+   * Clear the OP window and return to the initial EXPLORE state. Used
+   * when an upstream event (e.g. an adversarial restart) discards the
+   * current trajectory — without this the next OP sample would compute
+   * a meaningless slope across the discontinuity.
+   *
+   * `transitionCount` is intentionally preserved so cumulative run
+   * telemetry still reflects every observed phase change.
+   */
+  reset(): void {
+    this.window.length = 0;
+    this.currentPhase = "EXPLORE";
+    this.currentReason = "initial";
+    this.currentSlope = 0;
+  }
+
   get phase(): Phase {
     return this.currentPhase;
   }

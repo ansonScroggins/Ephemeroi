@@ -10,6 +10,11 @@ import {
 } from "./higgs";
 import { insertHiggsRun } from "./higgsStore";
 import { PhaseGate, type Phase, type PhaseReason } from "./phase-gate";
+import {
+  AdversarialRestartGuard,
+  type AdversarialRestartEvent,
+  type AdversarialRestartOptions,
+} from "./phase-restart";
 
 /**
  * Biomimetic Constraint-Field Solver — v0.11.3
@@ -77,6 +82,13 @@ export interface BiomimeticOptions {
    * paying O(n) flips per step on large instances.
    */
   higgsSampleSize?: number;
+  /**
+   * OP-Triggered Adversarial Restart configuration. Requires Higgs
+   * logging to be enabled (the guard reads OP from each snapshot). Pass
+   * `{ maxRestarts: 0 }` to disable without disabling Higgs. Defaults:
+   * opThreshold=2.0, beforeStep=15, topK=ceil(sqrt(n)), maxRestarts=3.
+   */
+  adversarialRestart?: AdversarialRestartOptions;
 }
 
 export interface StepEvent {
@@ -102,6 +114,13 @@ export interface StepEvent {
   opSlope: number | null;
   /** Why the gate is in `phase` this step. Null when phase is null. */
   phaseReason: PhaseReason | null;
+  /**
+   * Populated only on the step where the OP-Triggered Adversarial
+   * Restart fired this run. Null on every other step. Carries the OP
+   * value that tripped the guard, the cage-wall variables that were
+   * force-flipped, and the cumulative restart count.
+   */
+  adversarialRestart: AdversarialRestartEvent | null;
 }
 
 export interface BiomimeticResult {
@@ -147,6 +166,11 @@ export interface BiomimeticResult {
   finalPhase: Phase | null;
   /** Total EXPLORE↔PRECISION transitions across the run. */
   phaseTransitions: number;
+  /**
+   * How many times the OP-Triggered Adversarial Restart fired this
+   * run. Always 0 when Higgs is disabled (the guard requires snapshots).
+   */
+  adversarialRestarts: number;
 }
 
 // ===== Public entry point =====
@@ -195,6 +219,15 @@ export async function runBiomimetic(
   // entry/exit (rising slope > 0.1 enters PRECISION, slope ≤ 0.02
   // exits) with hysteresis baked in.
   const phaseGate = higgsLogger ? new PhaseGate() : null;
+
+  // OP-Triggered Adversarial Restart guard — same dependency on Higgs
+  // (it reads OP from each snapshot). When it fires we force-flip the
+  // top-K heaviest variables (the cage walls), re-randomize the rest,
+  // reset PhaseGate so the next slope estimate doesn't span the
+  // discontinuity, and continue the outer loop.
+  const restartGuard = higgsLogger
+    ? new AdversarialRestartGuard(n, opts.adversarialRestart ?? {})
+    : null;
 
   const timeline: StepEvent[] = [];
   let edictCount = 0;
@@ -286,6 +319,33 @@ export async function runBiomimetic(
     const snap = higgsLogger?.step(assignment, unsat) ?? null;
     const gate = phaseGate?.update(snap?.orderParameter ?? null) ?? null;
 
+    // Adversarial restart check. Fires only when Higgs gave us a fresh
+    // snapshot this step AND the OP/step thresholds match. On fire we
+    // mutate `assignment` in place, recompute unsat, and reset the
+    // PhaseGate so its slope window doesn't straddle the discontinuity.
+    let restartEvent: AdversarialRestartEvent | null = null;
+    if (restartGuard?.shouldRestart(snap, step)) {
+      restartEvent = restartGuard.applyRestart(
+        snap!,
+        step,
+        clauses,
+        assignment,
+        rng,
+      );
+      unsat = computeUnsat(clauses, assignment);
+      phaseGate?.reset();
+      logger.info(
+        {
+          step,
+          op: restartEvent.orderParameter,
+          flipped: restartEvent.flippedHeavies.length,
+          restartCount: restartEvent.restartCount,
+          unsatAfter: unsat,
+        },
+        "Biomimetic: OP-triggered adversarial restart",
+      );
+    }
+
     const evt: StepEvent = {
       step,
       unsat,
@@ -300,6 +360,7 @@ export async function runBiomimetic(
       phase: gate?.phase ?? null,
       opSlope: gate?.slope ?? null,
       phaseReason: gate?.reason ?? null,
+      adversarialRestart: restartEvent,
     };
     timeline.push(evt);
     if (cage && firstCageEvent === null) firstCageEvent = evt;
@@ -313,7 +374,13 @@ export async function runBiomimetic(
       (gate.reason === "slope_rising_entered_precision" ||
         gate.reason === "slope_plateau_exited_precision" ||
         gate.reason === "slope_falling_exited_precision");
-    if (cage || edictTriggered || invariants.length > 0 || phaseTransition) {
+    if (
+      cage ||
+      edictTriggered ||
+      invariants.length > 0 ||
+      phaseTransition ||
+      restartEvent !== null
+    ) {
       bus.publish({
         type: "constellation_alert",
         payload: { source: "biomimetic", ...evt },
@@ -451,6 +518,7 @@ export async function runBiomimetic(
     higgsOutcome,
     finalPhase: phaseGate?.phase ?? null,
     phaseTransitions: phaseGate?.transitionCount ?? 0,
+    adversarialRestarts: restartGuard?.count ?? 0,
   };
 }
 

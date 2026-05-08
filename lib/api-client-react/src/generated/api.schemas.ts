@@ -1020,6 +1020,27 @@ export const EphemeroiBiomimeticPhaseReason = {
   slope_holding_explore: "slope_holding_explore",
 } as const;
 
+/**
+ * Diagnostic record of one OP-Triggered Adversarial Restart event.
+Fires when the Higgs order parameter crosses a high threshold
+(default 2) early in a run (default before step 15) — the
+cross-run analyzer's "field has crystallized into a wrong shape"
+signature. The guard force-flips the top-K heaviest variables
+(the cage walls — highest positive Δ unsat on flip) and
+re-randomizes every other variable.
+
+ */
+export interface EphemeroiBiomimeticAdversarialRestartEvent {
+  /** Solver step at which the restart fired. */
+  step: number;
+  /** OP value that tripped the guard. */
+  orderParameter: number;
+  /** 1-indexed variable IDs that were force-flipped (the cage walls). */
+  flippedHeavies: number[];
+  /** Cumulative restart count for this run, including this event. */
+  restartCount: number;
+}
+
 export interface EphemeroiBiomimeticStepEvent {
   step: number;
   unsat: number;
@@ -1037,6 +1058,10 @@ export interface EphemeroiBiomimeticStepEvent {
   opSlope: number | null;
   /** Reason the gate is in `phase` this step. Null when phase is null. */
   phaseReason: EphemeroiBiomimeticPhaseReason | null;
+  /** Populated only on the step where the OP-Triggered Adversarial
+Restart fired this run. Null on every other step.
+ */
+  adversarialRestart: EphemeroiBiomimeticAdversarialRestartEvent | null;
 }
 
 /**
@@ -1079,6 +1104,11 @@ export interface EphemeroiBiomimeticResult {
   finalPhase: EphemeroiBiomimeticPhase | null;
   /** Total EXPLORE↔PRECISION transitions across the run. */
   phaseTransitions: number;
+  /** Number of OP-Triggered Adversarial Restarts that fired this
+run. Always 0 when Higgs is disabled (the guard depends on
+OP samples).
+ */
+  adversarialRestarts: number;
 }
 
 /**

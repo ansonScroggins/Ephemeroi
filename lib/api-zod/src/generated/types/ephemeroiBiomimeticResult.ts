@@ -33,4 +33,9 @@ export interface EphemeroiBiomimeticResult {
   finalPhase: EphemeroiBiomimeticPhase | null;
   /** Total EXPLORE↔PRECISION transitions across the run. */
   phaseTransitions: number;
+  /** Number of OP-Triggered Adversarial Restarts that fired this
+run. Always 0 when Higgs is disabled (the guard depends on
+OP samples).
+ */
+  adversarialRestarts: number;
 }

@@ -1305,6 +1305,32 @@ export const RunEphemeroiBiomimeticResponse = zod
           .describe(
             "Reason the gate is in `phase` this step. Null when phase is null.",
           ),
+        adversarialRestart: zod
+          .object({
+            step: zod
+              .number()
+              .describe("Solver step at which the restart fired."),
+            orderParameter: zod
+              .number()
+              .describe("OP value that tripped the guard."),
+            flippedHeavies: zod
+              .array(zod.number())
+              .describe(
+                "1-indexed variable IDs that were force-flipped (the cage walls).",
+              ),
+            restartCount: zod
+              .number()
+              .describe(
+                "Cumulative restart count for this run, including this event.",
+              ),
+          })
+          .describe(
+            'Diagnostic record of one OP-Triggered Adversarial Restart event.\nFires when the Higgs order parameter crosses a high threshold\n(default 2) early in a run (default before step 15) — the\ncross-run analyzer\'s \"field has crystallized into a wrong shape\"\nsignature. The guard force-flips the top-K heaviest variables\n(the cage walls — highest positive Δ unsat on flip) and\nre-randomizes every other variable.\n',
+          )
+          .nullable()
+          .describe(
+            "Populated only on the step where the OP-Triggered Adversarial\nRestart fired this run. Null on every other step.\n",
+          ),
       }),
     ),
     donNarration: zod.string().nullable(),
@@ -1335,6 +1361,11 @@ export const RunEphemeroiBiomimeticResponse = zod
     phaseTransitions: zod
       .number()
       .describe("Total EXPLORE↔PRECISION transitions across the run."),
+    adversarialRestarts: zod
+      .number()
+      .describe(
+        "Number of OP-Triggered Adversarial Restarts that fired this\nrun. Always 0 when Higgs is disabled (the guard depends on\nOP samples).\n",
+      ),
   })
   .describe("Outcome of one biomimetic protocol run.");
 
