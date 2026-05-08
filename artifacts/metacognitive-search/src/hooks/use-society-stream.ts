@@ -38,6 +38,23 @@ export interface SocietyClusterPosition {
   y: number;
 }
 
+/**
+ * End-of-round snapshot used by the replay scrubber. We snapshot when a
+ * `cluster_positions` event arrives, since by that point all of that
+ * round's belief / reputation / influence / feed events have already been
+ * applied to the live state.
+ */
+export interface SocietyRoundSnapshot {
+  round: number;
+  beliefs: Record<string, number>;
+  reputation: Record<string, Record<string, number>>;
+  clusterPositions: SocietyClusterPosition[];
+  /** Length of `feed` array immediately after this round was applied. */
+  feedLength: number;
+  /** Length of `influences` array immediately after this round was applied. */
+  influencesLength: number;
+}
+
 export interface SocietyState {
   topic: string;
   rounds: number;
@@ -61,6 +78,8 @@ export interface SocietyState {
   /** which round the latest clusterPositions came from (0 = pre-round-1 init) */
   clusterRound: number;
   currentRound: number;
+  /** End-of-round snapshots keyed by round number, in arrival order. */
+  roundSnapshots: SocietyRoundSnapshot[];
   provider?: string;
   model?: string;
   done: boolean;
@@ -79,6 +98,7 @@ const empty: SocietyState = {
   clusterPositions: [],
   clusterRound: 0,
   currentRound: 0,
+  roundSnapshots: [],
   done: false,
 };
 
@@ -247,24 +267,53 @@ function handleEvent(evt: Record<string, unknown>, setState: React.Dispatch<Reac
     if (t === "cluster_positions") {
       const positionsRaw = (evt["positions"] as SocietyClusterPosition[] | undefined) ?? [];
       const round = (evt["round"] as number | undefined) ?? s.clusterRound;
+      // Snapshot end-of-round state for the replay scrubber. Replace any
+      // existing snapshot for the same round (defensive against re-emits).
+      const snapshot: SocietyRoundSnapshot = {
+        round,
+        beliefs: { ...s.beliefs },
+        reputation: Object.fromEntries(
+          Object.entries(s.reputation).map(([k, v]) => [k, { ...v }]),
+        ),
+        clusterPositions: positionsRaw,
+        feedLength: s.feed.length,
+        influencesLength: s.influences.length,
+      };
+      const filtered = s.roundSnapshots.filter((snap) => snap.round !== round);
+      const nextSnapshots = [...filtered, snapshot].sort(
+        (a, b) => a.round - b.round,
+      );
       return {
         ...s,
         clusterPositions: positionsRaw,
         clusterRound: round,
+        roundSnapshots: nextSnapshots,
       };
     }
     if (t === "narrator") {
+      const round = evt["round"] as number;
+      const nextFeed: SocietyState["feed"] = [
+        ...s.feed,
+        {
+          kind: "narrator",
+          round,
+          phase: evt["phase"] as "midway" | "final",
+          text: evt["text"] as string,
+        },
+      ];
+      // Narrator beats can arrive AFTER cluster_positions for the same round
+      // (midway and final narrators are emitted after the per-round PCA
+      // event). Backfill any existing snapshot for this round so the replay
+      // scrubber includes the narrator in that round's transcript.
+      const nextSnapshots = s.roundSnapshots.map((snap) =>
+        snap.round === round
+          ? { ...snap, feedLength: nextFeed.length }
+          : snap,
+      );
       return {
         ...s,
-        feed: [
-          ...s.feed,
-          {
-            kind: "narrator",
-            round: evt["round"] as number,
-            phase: evt["phase"] as "midway" | "final",
-            text: evt["text"] as string,
-          },
-        ],
+        feed: nextFeed,
+        roundSnapshots: nextSnapshots,
       };
     }
     if (t === "complete") {

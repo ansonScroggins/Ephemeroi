@@ -1,22 +1,189 @@
-import React, { useMemo, useEffect, useRef } from "react";
+import React, { useMemo, useEffect, useRef, useState, useCallback } from "react";
 import { cn } from "@/lib/utils";
-import type { SocietyState, SocietyAgent } from "@/hooks/use-society-stream";
-import { AlertTriangle, Sparkles, Globe2, Users, Network, Telescope } from "lucide-react";
+import type {
+  SocietyState,
+  SocietyAgent,
+  SocietyClusterPosition,
+  SocietyInfluence,
+} from "@/hooks/use-society-stream";
+import {
+  AlertTriangle,
+  Sparkles,
+  Globe2,
+  Users,
+  Network,
+  Telescope,
+  Play,
+  Pause,
+  Rewind,
+} from "lucide-react";
 
 interface SocietyViewProps {
   state: SocietyState;
   isRunning: boolean;
 }
 
+/**
+ * Effective view of state at a given playback round, or live if
+ * `playbackRound` is null.
+ */
+interface EffectiveView {
+  beliefs: Record<string, number>;
+  reputation: Record<string, Record<string, number>>;
+  clusterPositions: SocietyClusterPosition[];
+  clusterRound: number;
+  feed: SocietyState["feed"];
+  influences: SocietyInfluence[];
+  /** True when we are scrubbing through a past round (not live). */
+  scrubbing: boolean;
+}
+
+function deriveEffective(
+  state: SocietyState,
+  playbackRound: number | null,
+): EffectiveView {
+  if (playbackRound === null) {
+    return {
+      beliefs: state.beliefs,
+      reputation: state.reputation,
+      clusterPositions: state.clusterPositions,
+      clusterRound: state.clusterRound,
+      feed: state.feed,
+      influences: state.influences,
+      scrubbing: false,
+    };
+  }
+  const snap = state.roundSnapshots.find((s) => s.round === playbackRound);
+  if (!snap) {
+    return {
+      beliefs: state.beliefs,
+      reputation: state.reputation,
+      clusterPositions: state.clusterPositions,
+      clusterRound: state.clusterRound,
+      feed: state.feed,
+      influences: state.influences,
+      scrubbing: false,
+    };
+  }
+  return {
+    beliefs: snap.beliefs,
+    reputation: snap.reputation,
+    clusterPositions: snap.clusterPositions,
+    clusterRound: snap.round,
+    feed: state.feed.slice(0, snap.feedLength),
+    influences: state.influences.slice(0, snap.influencesLength),
+    scrubbing: true,
+  };
+}
+
 export function SocietyView({ state, isRunning }: SocietyViewProps) {
   const feedRef = useRef<HTMLDivElement>(null);
+  const [playbackRound, setPlaybackRound] = useState<number | null>(null);
+  const [isPlaying, setIsPlaying] = useState(false);
 
-  // Auto-scroll feed
+  // Whenever a new sim starts (agents reset), drop playback back to live.
+  const agentsKey = state.agents.map((a) => a.id).join(",");
   useEffect(() => {
-    if (feedRef.current) {
-      feedRef.current.scrollTop = feedRef.current.scrollHeight;
+    setPlaybackRound(null);
+    setIsPlaying(false);
+  }, [agentsKey]);
+
+  // While the sim is still streaming, force live view; the scrubber only
+  // unlocks after the run finishes.
+  useEffect(() => {
+    if (isRunning) {
+      setPlaybackRound(null);
+      setIsPlaying(false);
     }
-  }, [state.feed.length]);
+  }, [isRunning]);
+
+  const snapshots = state.roundSnapshots;
+  const minRound = snapshots[0]?.round ?? 0;
+  const maxRound = snapshots[snapshots.length - 1]?.round ?? 0;
+
+  // Auto-advance during play. 600ms matches the constellation transition.
+  useEffect(() => {
+    if (!isPlaying) return;
+    if (snapshots.length < 2) {
+      setIsPlaying(false);
+      return;
+    }
+    const id = window.setInterval(() => {
+      setPlaybackRound((current) => {
+        const start = current ?? minRound;
+        if (start >= maxRound) {
+          setIsPlaying(false);
+          return null; // jump back to live at the end
+        }
+        // Find the next available snapshot round (snapshots may be sparse).
+        const next = snapshots.find((s) => s.round > start);
+        if (!next) {
+          setIsPlaying(false);
+          return null;
+        }
+        return next.round;
+      });
+    }, 600);
+    return () => window.clearInterval(id);
+  }, [isPlaying, snapshots, minRound, maxRound]);
+
+  const effective = useMemo(
+    () => deriveEffective(state, playbackRound),
+    [state, playbackRound],
+  );
+
+  // Auto-scroll feed (only when live; while scrubbing we want to see the
+  // statements at that round, not snap to the bottom).
+  useEffect(() => {
+    if (!feedRef.current) return;
+    if (effective.scrubbing) return;
+    feedRef.current.scrollTop = feedRef.current.scrollHeight;
+  }, [effective.feed.length, effective.scrubbing]);
+
+  const handleScrub = useCallback(
+    (round: number) => {
+      setIsPlaying(false);
+      // Snap to nearest snapshot round (snapshots are guaranteed sorted).
+      if (snapshots.length === 0) return;
+      let nearest = snapshots[0]!;
+      let nearestDist = Math.abs(nearest.round - round);
+      for (const s of snapshots) {
+        const d = Math.abs(s.round - round);
+        if (d < nearestDist) {
+          nearest = s;
+          nearestDist = d;
+        }
+      }
+      // Always lock to the explicit snapshot — never auto-coerce to live
+      // when the user scrubs to maxRound. "Live" is reserved for the
+      // explicit Live button (or an in-progress sim).
+      setPlaybackRound(nearest.round);
+    },
+    [snapshots],
+  );
+
+  const handleTogglePlay = useCallback(() => {
+    if (snapshots.length < 2) return;
+    setIsPlaying((p) => {
+      const next = !p;
+      // If we're at the end (or live) and starting playback, rewind to start.
+      if (next && (playbackRound === null || playbackRound >= maxRound)) {
+        setPlaybackRound(minRound);
+      }
+      return next;
+    });
+  }, [snapshots.length, playbackRound, minRound, maxRound]);
+
+  const handleRewind = useCallback(() => {
+    if (snapshots.length === 0) return;
+    setIsPlaying(false);
+    setPlaybackRound(minRound);
+  }, [snapshots, minRound]);
+
+  const handleLive = useCallback(() => {
+    setIsPlaying(false);
+    setPlaybackRound(null);
+  }, []);
 
   if (state.agents.length === 0) {
     return (
@@ -40,18 +207,152 @@ export function SocietyView({ state, isRunning }: SocietyViewProps) {
   return (
     <div className="flex-1 overflow-hidden flex flex-col" data-testid="society-view">
       {/* Top: agents row */}
-      <AgentsRow state={state} />
+      <AgentsRow state={state} effective={effective} />
 
       {/* Middle: split — debate feed | influence graph */}
       <div className="flex-1 overflow-hidden grid grid-cols-1 lg:grid-cols-[1fr_320px] gap-2 px-2 pb-2 min-h-0">
-        <DebateFeed state={state} feedRef={feedRef} isRunning={isRunning} />
-        <SidePanel state={state} />
+        <DebateFeed
+          state={state}
+          effective={effective}
+          feedRef={feedRef}
+          isRunning={isRunning}
+        />
+        <SidePanel state={state} effective={effective} />
+      </div>
+
+      {/* Bottom: round scrubber (only after a sim completes with ≥2 snapshots) */}
+      {!isRunning && snapshots.length >= 2 && (
+        <RoundScrubber
+          minRound={minRound}
+          maxRound={maxRound}
+          snapshotRounds={snapshots.map((s) => s.round)}
+          playbackRound={playbackRound}
+          isPlaying={isPlaying}
+          onScrub={handleScrub}
+          onTogglePlay={handleTogglePlay}
+          onRewind={handleRewind}
+          onLive={handleLive}
+        />
+      )}
+    </div>
+  );
+}
+
+function RoundScrubber({
+  minRound,
+  maxRound,
+  snapshotRounds,
+  playbackRound,
+  isPlaying,
+  onScrub,
+  onTogglePlay,
+  onRewind,
+  onLive,
+}: {
+  minRound: number;
+  maxRound: number;
+  snapshotRounds: number[];
+  playbackRound: number | null;
+  isPlaying: boolean;
+  onScrub: (round: number) => void;
+  onTogglePlay: () => void;
+  onRewind: () => void;
+  onLive: () => void;
+}) {
+  // When playbackRound is null we're on "live" — show the slider at maxRound.
+  const sliderValue = playbackRound ?? maxRound;
+  const span = Math.max(1, maxRound - minRound);
+  return (
+    <div
+      className="border-t border-border/40 bg-card/50 px-3 py-2 flex items-center gap-3"
+      data-testid="round-scrubber"
+    >
+      <div className="flex items-center gap-1">
+        <button
+          type="button"
+          onClick={onRewind}
+          className="h-7 w-7 rounded-md bg-muted/40 hover:bg-muted/60 border border-border/40 flex items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+          aria-label={`Rewind to round ${minRound}`}
+          data-testid="scrubber-rewind"
+        >
+          <Rewind className="h-3.5 w-3.5" />
+        </button>
+        <button
+          type="button"
+          onClick={onTogglePlay}
+          className={cn(
+            "h-7 w-7 rounded-md border flex items-center justify-center transition-colors",
+            isPlaying
+              ? "bg-violet-500/20 border-violet-500/50 text-violet-200"
+              : "bg-muted/40 hover:bg-muted/60 border-border/40 text-muted-foreground hover:text-foreground",
+          )}
+          aria-label={isPlaying ? "Pause replay" : "Play replay"}
+          data-testid="scrubber-play"
+        >
+          {isPlaying ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+        </button>
+      </div>
+      <div className="flex-1 flex items-center gap-2 min-w-0">
+        <span className="text-[10px] uppercase tracking-widest text-muted-foreground font-mono shrink-0">
+          round
+        </span>
+        <div className="relative flex-1">
+          <input
+            type="range"
+            min={minRound}
+            max={maxRound}
+            step={1}
+            value={sliderValue}
+            onChange={(e) => onScrub(Number(e.target.value))}
+            className="w-full accent-violet-500 cursor-pointer"
+            aria-label="Scrub through rounds"
+            data-testid="scrubber-slider"
+          />
+          {/* Tick marks for each snapshot */}
+          <div className="absolute inset-x-0 -bottom-1.5 flex items-center pointer-events-none px-[2px]">
+            {snapshotRounds.map((r) => (
+              <span
+                key={r}
+                className="block h-1 w-px bg-border/60"
+                style={{
+                  marginLeft:
+                    r === minRound ? 0 : `calc(${((r - minRound) / span) * 100}% - ${((r - minRound) / span) * 4}px)`,
+                  position: "absolute",
+                  left: `calc(${((r - minRound) / span) * 100}%)`,
+                }}
+              />
+            ))}
+          </div>
+        </div>
+        <span
+          className="text-[11px] font-mono tabular-nums text-foreground/90 shrink-0 w-20 text-right"
+          data-testid="scrubber-label"
+        >
+          {playbackRound === null ? (
+            <span className="text-emerald-400">live · r{maxRound}</span>
+          ) : (
+            <>
+              r{playbackRound}
+              <span className="text-muted-foreground/60"> / {maxRound}</span>
+            </>
+          )}
+        </span>
+        {playbackRound !== null && (
+          <button
+            type="button"
+            onClick={onLive}
+            className="text-[10px] uppercase tracking-widest font-mono px-2 py-1 rounded-md bg-emerald-500/15 hover:bg-emerald-500/25 text-emerald-300 border border-emerald-500/30 transition-colors shrink-0"
+            data-testid="scrubber-live"
+          >
+            live
+          </button>
+        )}
       </div>
     </div>
   );
 }
 
-function AgentsRow({ state }: { state: SocietyState }) {
+function AgentsRow({ state, effective }: { state: SocietyState; effective: EffectiveView }) {
   return (
     <div className="px-3 pt-2 pb-2 border-b border-border/40 bg-card/40">
       <div className="flex items-center gap-1.5 mb-2 text-[10px] uppercase tracking-widest text-muted-foreground font-mono">
@@ -68,7 +369,7 @@ function AgentsRow({ state }: { state: SocietyState }) {
       </div>
       <div className="flex items-stretch gap-2 overflow-x-auto pb-1">
         {state.agents.map((a) => (
-          <AgentChip key={a.id} agent={a} belief={state.beliefs[a.id] ?? a.belief} />
+          <AgentChip key={a.id} agent={a} belief={effective.beliefs[a.id] ?? a.belief} />
         ))}
       </div>
     </div>
@@ -133,10 +434,12 @@ function AgentChip({ agent, belief }: { agent: SocietyAgent; belief: number }) {
 
 function DebateFeed({
   state,
+  effective,
   feedRef,
   isRunning,
 }: {
   state: SocietyState;
+  effective: EffectiveView;
   feedRef: React.RefObject<HTMLDivElement | null>;
   isRunning: boolean;
 }) {
@@ -145,10 +448,13 @@ function DebateFeed({
   return (
     <div
       ref={feedRef}
-      className="overflow-y-auto rounded-xl bg-card/30 border border-border/30 p-3 flex flex-col gap-2 min-h-0"
+      className={cn(
+        "overflow-y-auto rounded-xl bg-card/30 border p-3 flex flex-col gap-2 min-h-0",
+        effective.scrubbing ? "border-violet-500/40" : "border-border/30",
+      )}
       data-testid="society-feed"
     >
-      {state.feed.map((item, i) => {
+      {effective.feed.map((item, i) => {
         if (item.kind === "round_start") {
           return (
             <div key={i} className="flex items-center gap-2 my-1.5" data-testid={`feed-round-${item.round}`}>
@@ -242,17 +548,17 @@ function DebateFeed({
   );
 }
 
-function SidePanel({ state }: { state: SocietyState }) {
+function SidePanel({ state, effective }: { state: SocietyState; effective: EffectiveView }) {
   return (
     <div className="hidden lg:flex flex-col gap-2 min-h-0">
-      <InfluenceGraph state={state} />
-      <ConstellationMap state={state} />
-      <ReputationMatrix state={state} />
+      <InfluenceGraph state={state} effective={effective} />
+      <ConstellationMap state={state} effective={effective} />
+      <ReputationMatrix state={state} effective={effective} />
     </div>
   );
 }
 
-function ConstellationMap({ state }: { state: SocietyState }) {
+function ConstellationMap({ state, effective }: { state: SocietyState; effective: EffectiveView }) {
   const size = 220;
   const pad = 18;
   const inner = size - pad * 2;
@@ -264,7 +570,7 @@ function ConstellationMap({ state }: { state: SocietyState }) {
 
   // Map raw PCA coords into the SVG's [pad, size-pad] box, preserving aspect.
   const layout = useMemo(() => {
-    const pos = state.clusterPositions;
+    const pos = effective.clusterPositions;
     if (pos.length === 0) return [];
     const xs = pos.map((p) => p.x);
     const ys = pos.map((p) => p.y);
@@ -284,7 +590,7 @@ function ConstellationMap({ state }: { state: SocietyState }) {
         cy: pad + inner / 2 + ny * inner * 0.85,
       };
     });
-  }, [state.clusterPositions, inner]);
+  }, [effective.clusterPositions, inner]);
 
   return (
     <div
@@ -293,9 +599,9 @@ function ConstellationMap({ state }: { state: SocietyState }) {
     >
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground font-mono mb-1">
         <Telescope className="h-3 w-3" /> belief constellation
-        {state.clusterRound > 0 && (
+        {effective.clusterRound > 0 && (
           <span className="ml-auto normal-case tracking-normal text-muted-foreground/70">
-            r{state.clusterRound}
+            r{effective.clusterRound}
           </span>
         )}
       </div>
@@ -377,11 +683,11 @@ function ConstellationMap({ state }: { state: SocietyState }) {
   );
 }
 
-function InfluenceGraph({ state }: { state: SocietyState }) {
+function InfluenceGraph({ state, effective }: { state: SocietyState; effective: EffectiveView }) {
   // Aggregate edge weights across all rounds: edge[from][to] = sum of pull magnitudes
   const edges = useMemo(() => {
     const map = new Map<string, { from: string; to: string; weight: number; up: number; down: number }>();
-    for (const inf of state.influences) {
+    for (const inf of effective.influences) {
       const k = `${inf.from}->${inf.to}`;
       const e = map.get(k) ?? { from: inf.from, to: inf.to, weight: 0, up: 0, down: 0 };
       e.weight += inf.weight;
@@ -390,7 +696,7 @@ function InfluenceGraph({ state }: { state: SocietyState }) {
       map.set(k, e);
     }
     return Array.from(map.values());
-  }, [state.influences]);
+  }, [effective.influences]);
 
   const size = 280;
   const cx = size / 2;
@@ -508,7 +814,7 @@ function InfluenceGraph({ state }: { state: SocietyState }) {
   );
 }
 
-function ReputationMatrix({ state }: { state: SocietyState }) {
+function ReputationMatrix({ state, effective }: { state: SocietyState; effective: EffectiveView }) {
   return (
     <div className="rounded-xl bg-card/30 border border-border/30 p-2" data-testid="reputation-matrix">
       <div className="flex items-center gap-1.5 text-[10px] uppercase tracking-widest text-muted-foreground font-mono mb-1.5">
@@ -535,7 +841,7 @@ function ReputationMatrix({ state }: { state: SocietyState }) {
               if (row.id === col.id) {
                 return <div key={col.id} className="text-center text-muted-foreground/30 py-0.5">·</div>;
               }
-              const trust = state.reputation[row.id]?.[col.id] ?? 0.5;
+              const trust = effective.reputation[row.id]?.[col.id] ?? 0.5;
               const intensity = Math.abs(trust - 0.5) * 2; // 0..1
               const positive = trust >= 0.5;
               return (

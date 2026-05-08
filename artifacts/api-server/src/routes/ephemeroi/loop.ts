@@ -106,7 +106,7 @@ class EphemeroiLoop {
     try {
       const settings = await getSettings();
       intervalSeconds = settings.intervalSeconds;
-      this.currentIntervalSeconds = Math.max(1, Math.min(intervalSeconds, 600));
+      this.currentIntervalSeconds = Math.max(1, Math.min(intervalSeconds || 0, 600));
     } catch (err) {
       logger.warn({ err }, "Ephemeroi loop: failed to read settings");
     }
