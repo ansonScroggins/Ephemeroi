@@ -463,7 +463,7 @@ export async function runBiomimetic(
   }
 
   // Truncate the timeline so we don't ship 200 step events back over HTTP.
-  const trimmedTimeline = timeline.slice(-50);
+  const trimmedTimeline = process.env.EPHEMEROI_FULL_TIMELINE === "1" ? timeline.slice() : timeline.slice(-50);
 
   logger.info(
     {
