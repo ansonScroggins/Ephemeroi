@@ -9,6 +9,7 @@ import {
   type HiggsOutcome,
 } from "./higgs";
 import { insertHiggsRun } from "./higgsStore";
+import { PhaseGate, type Phase, type PhaseReason } from "./phase-gate";
 
 /**
  * Biomimetic Constraint-Field Solver — v0.11.3
@@ -89,6 +90,18 @@ export interface StepEvent {
   intronsFlipped: number;
   exonsReinforced: number;
   invariantViolations: string[];
+  /**
+   * PhaseGate's verdict at this step, derived from the OP-slope window.
+   * "EXPLORE" while symmetry is intact or already locked rigid (cage),
+   * "PRECISION" while symmetry is actively breaking (rising OP slope).
+   * Null when the Higgs logger is disabled — without OP samples the
+   * gate cannot make a decision and we don't fabricate one.
+   */
+  phase: Phase | null;
+  /** Estimated OP slope per Higgs snapshot tick. Null when phase is null. */
+  opSlope: number | null;
+  /** Why the gate is in `phase` this step. Null when phase is null. */
+  phaseReason: PhaseReason | null;
 }
 
 export interface BiomimeticResult {
@@ -130,6 +143,10 @@ export interface BiomimeticResult {
    * Null when Higgs is disabled.
    */
   higgsOutcome: HiggsOutcome | null;
+  /** Final PhaseGate phase at run end. Null when Higgs is disabled. */
+  finalPhase: Phase | null;
+  /** Total EXPLORE↔PRECISION transitions across the run. */
+  phaseTransitions: number;
 }
 
 // ===== Public entry point =====
@@ -172,6 +189,12 @@ export async function runBiomimetic(
         sampleSize: higgsSampleSize,
       })
     : null;
+
+  // PhaseGate lives or dies with the Higgs logger — without OP samples
+  // there's nothing for the gate to consume. Defaults give symmetric
+  // entry/exit (rising slope > 0.1 enters PRECISION, slope ≤ 0.02
+  // exits) with hysteresis baked in.
+  const phaseGate = higgsLogger ? new PhaseGate() : null;
 
   const timeline: StepEvent[] = [];
   let edictCount = 0;
@@ -257,6 +280,12 @@ export async function runBiomimetic(
     }
     invariantTotal += invariants.length;
 
+    // Higgs snapshot — runs every `higgsLogInterval` steps internally;
+    // call unconditionally so the logger owns the cadence. The returned
+    // snapshot (or null between captures) feeds straight into PhaseGate.
+    const snap = higgsLogger?.step(assignment, unsat) ?? null;
+    const gate = phaseGate?.update(snap?.orderParameter ?? null) ?? null;
+
     const evt: StepEvent = {
       step,
       unsat,
@@ -268,22 +297,28 @@ export async function runBiomimetic(
       intronsFlipped: splice.intronsFlipped,
       exonsReinforced: splice.exonsReinforced,
       invariantViolations: invariants,
+      phase: gate?.phase ?? null,
+      opSlope: gate?.slope ?? null,
+      phaseReason: gate?.reason ?? null,
     };
     timeline.push(evt);
     if (cage && firstCageEvent === null) firstCageEvent = evt;
 
     // Fire bus events on significant moments only — per-step would flood
-    // any subscriber (and the SSE stream).
-    if (cage || edictTriggered || invariants.length > 0) {
+    // any subscriber (and the SSE stream). PhaseGate transitions also
+    // qualify as "significant" so subscribers can watch the EXPLORE↔
+    // PRECISION cadence in real time.
+    const phaseTransition =
+      gate !== null &&
+      (gate.reason === "slope_rising_entered_precision" ||
+        gate.reason === "slope_plateau_exited_precision" ||
+        gate.reason === "slope_falling_exited_precision");
+    if (cage || edictTriggered || invariants.length > 0 || phaseTransition) {
       bus.publish({
         type: "constellation_alert",
         payload: { source: "biomimetic", ...evt },
       });
     }
-
-    // Higgs snapshot — runs every `higgsLogInterval` steps internally;
-    // call unconditionally so the logger owns the cadence.
-    higgsLogger?.step(assignment, unsat);
   }
 
   const finalUnsat = unsat;
@@ -414,6 +449,8 @@ export async function runBiomimetic(
     durationMs: Date.now() - t0,
     higgsRunId,
     higgsOutcome,
+    finalPhase: phaseGate?.phase ?? null,
+    phaseTransitions: phaseGate?.transitionCount ?? 0,
   };
 }
 

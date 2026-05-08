@@ -987,6 +987,39 @@ export interface EphemeroiBiomimeticOptions {
   seed?: number;
 }
 
+/**
+ * PhaseGate verdict at a given step, derived from the OP-slope window.
+  * `EXPLORE`   — symmetry intact, locked rigid (cage), or slope plateau/falling
+  * `PRECISION` — symmetry actively breaking (rising OP slope above entry threshold)
+
+ */
+export type EphemeroiBiomimeticPhase =
+  (typeof EphemeroiBiomimeticPhase)[keyof typeof EphemeroiBiomimeticPhase];
+
+export const EphemeroiBiomimeticPhase = {
+  EXPLORE: "EXPLORE",
+  PRECISION: "PRECISION",
+} as const;
+
+/**
+ * Why the PhaseGate is in its current phase this step. Drives telemetry
+and is the hook the upcoming Splicer/FragmentGraph subsystems will
+consume.
+
+ */
+export type EphemeroiBiomimeticPhaseReason =
+  (typeof EphemeroiBiomimeticPhaseReason)[keyof typeof EphemeroiBiomimeticPhaseReason];
+
+export const EphemeroiBiomimeticPhaseReason = {
+  initial: "initial",
+  insufficient_samples: "insufficient_samples",
+  slope_rising_entered_precision: "slope_rising_entered_precision",
+  slope_plateau_exited_precision: "slope_plateau_exited_precision",
+  slope_falling_exited_precision: "slope_falling_exited_precision",
+  slope_holding_precision: "slope_holding_precision",
+  slope_holding_explore: "slope_holding_explore",
+} as const;
+
 export interface EphemeroiBiomimeticStepEvent {
   step: number;
   unsat: number;
@@ -998,6 +1031,12 @@ export interface EphemeroiBiomimeticStepEvent {
   intronsFlipped: number;
   exonsReinforced: number;
   invariantViolations: string[];
+  /** PhaseGate phase this step. Null when Higgs logging is disabled. */
+  phase: EphemeroiBiomimeticPhase | null;
+  /** Estimated OP slope per Higgs snapshot tick. Null when phase is null. */
+  opSlope: number | null;
+  /** Reason the gate is in `phase` this step. Null when phase is null. */
+  phaseReason: EphemeroiBiomimeticPhaseReason | null;
 }
 
 /**
@@ -1036,6 +1075,10 @@ export interface EphemeroiBiomimeticResult {
   higgsRunId: number | null;
   /** Outcome bucket, or null when Higgs was disabled. */
   higgsOutcome: EphemeroiHiggsOutcome | null;
+  /** PhaseGate phase at run end. Null when Higgs is disabled. */
+  finalPhase: EphemeroiBiomimeticPhase | null;
+  /** Total EXPLORE↔PRECISION transitions across the run. */
+  phaseTransitions: number;
 }
 
 /**

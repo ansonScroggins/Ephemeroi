@@ -5,6 +5,8 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EphemeroiBiomimeticPhase } from "./ephemeroiBiomimeticPhase";
+import type { EphemeroiBiomimeticPhaseReason } from "./ephemeroiBiomimeticPhaseReason";
 
 export interface EphemeroiBiomimeticStepEvent {
   step: number;
@@ -17,4 +19,10 @@ export interface EphemeroiBiomimeticStepEvent {
   intronsFlipped: number;
   exonsReinforced: number;
   invariantViolations: string[];
+  /** PhaseGate phase this step. Null when Higgs logging is disabled. */
+  phase: EphemeroiBiomimeticPhase | null;
+  /** Estimated OP slope per Higgs snapshot tick. Null when phase is null. */
+  opSlope: number | null;
+  /** Reason the gate is in `phase` this step. Null when phase is null. */
+  phaseReason: EphemeroiBiomimeticPhaseReason | null;
 }

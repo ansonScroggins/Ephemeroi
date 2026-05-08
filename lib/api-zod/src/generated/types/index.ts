@@ -15,6 +15,8 @@ export * from "./ephemeroiBeliefsBySourceResponse";
 export * from "./ephemeroiBeliefsBySourceResponseContradictionsItem";
 export * from "./ephemeroiBeliefsResponse";
 export * from "./ephemeroiBiomimeticOptions";
+export * from "./ephemeroiBiomimeticPhase";
+export * from "./ephemeroiBiomimeticPhaseReason";
 export * from "./ephemeroiBiomimeticResult";
 export * from "./ephemeroiBiomimeticStepEvent";
 export * from "./ephemeroiCognitiveFieldResponse";

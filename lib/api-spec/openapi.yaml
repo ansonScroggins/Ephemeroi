@@ -2123,6 +2123,29 @@ components:
           type: integer
           description: Deterministic RNG seed.
 
+    EphemeroiBiomimeticPhase:
+      type: string
+      enum: [EXPLORE, PRECISION]
+      description: |
+        PhaseGate verdict at a given step, derived from the OP-slope window.
+          * `EXPLORE`   — symmetry intact, locked rigid (cage), or slope plateau/falling
+          * `PRECISION` — symmetry actively breaking (rising OP slope above entry threshold)
+
+    EphemeroiBiomimeticPhaseReason:
+      type: string
+      enum:
+        - initial
+        - insufficient_samples
+        - slope_rising_entered_precision
+        - slope_plateau_exited_precision
+        - slope_falling_exited_precision
+        - slope_holding_precision
+        - slope_holding_explore
+      description: |
+        Why the PhaseGate is in its current phase this step. Drives telemetry
+        and is the hook the upcoming Splicer/FragmentGraph subsystems will
+        consume.
+
     EphemeroiBiomimeticStepEvent:
       type: object
       properties:
@@ -2138,7 +2161,21 @@ components:
         invariantViolations:
           type: array
           items: { type: string }
-      required: [step, unsat, consensusMean, pressureVariance, cageDetected, edictTriggered, edictCascadeDepth, intronsFlipped, exonsReinforced, invariantViolations]
+        phase:
+          allOf:
+            - $ref: "#/components/schemas/EphemeroiBiomimeticPhase"
+          nullable: true
+          description: PhaseGate phase this step. Null when Higgs logging is disabled.
+        opSlope:
+          type: number
+          nullable: true
+          description: Estimated OP slope per Higgs snapshot tick. Null when phase is null.
+        phaseReason:
+          allOf:
+            - $ref: "#/components/schemas/EphemeroiBiomimeticPhaseReason"
+          nullable: true
+          description: Reason the gate is in `phase` this step. Null when phase is null.
+      required: [step, unsat, consensusMean, pressureVariance, cageDetected, edictTriggered, edictCascadeDepth, intronsFlipped, exonsReinforced, invariantViolations, phase, opSlope, phaseReason]
 
     EphemeroiBiomimeticResult:
       type: object
@@ -2170,7 +2207,15 @@ components:
             - $ref: "#/components/schemas/EphemeroiHiggsOutcome"
           nullable: true
           description: Outcome bucket, or null when Higgs was disabled.
-      required: [solved, finalUnsat, steps, edictCount, cageEvents, invariantViolations, timeline, donNarration, formatted, n, m, durationMs, higgsRunId, higgsOutcome]
+        finalPhase:
+          allOf:
+            - $ref: "#/components/schemas/EphemeroiBiomimeticPhase"
+          nullable: true
+          description: PhaseGate phase at run end. Null when Higgs is disabled.
+        phaseTransitions:
+          type: integer
+          description: Total EXPLORE↔PRECISION transitions across the run.
+      required: [solved, finalUnsat, steps, edictCount, cageEvents, invariantViolations, timeline, donNarration, formatted, n, m, durationMs, higgsRunId, higgsOutcome, finalPhase, phaseTransitions]
 
     EphemeroiHiggsOutcome:
       type: string

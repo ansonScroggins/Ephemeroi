@@ -5,6 +5,7 @@
  * API specification
  * OpenAPI spec version: 0.1.0
  */
+import type { EphemeroiBiomimeticPhase } from "./ephemeroiBiomimeticPhase";
 import type { EphemeroiBiomimeticStepEvent } from "./ephemeroiBiomimeticStepEvent";
 import type { EphemeroiHiggsOutcome } from "./ephemeroiHiggsOutcome";
 
@@ -28,4 +29,8 @@ export interface EphemeroiBiomimeticResult {
   higgsRunId: number | null;
   /** Outcome bucket, or null when Higgs was disabled. */
   higgsOutcome: EphemeroiHiggsOutcome | null;
+  /** PhaseGate phase at run end. Null when Higgs is disabled. */
+  finalPhase: EphemeroiBiomimeticPhase | null;
+  /** Total EXPLORE↔PRECISION transitions across the run. */
+  phaseTransitions: number;
 }

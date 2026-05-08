@@ -1273,6 +1273,38 @@ export const RunEphemeroiBiomimeticResponse = zod
         intronsFlipped: zod.number(),
         exonsReinforced: zod.number(),
         invariantViolations: zod.array(zod.string()),
+        phase: zod
+          .enum(["EXPLORE", "PRECISION"])
+          .describe(
+            "PhaseGate verdict at a given step, derived from the OP-slope window.\n  \* `EXPLORE`   — symmetry intact, locked rigid (cage), or slope plateau\/falling\n  \* `PRECISION` — symmetry actively breaking (rising OP slope above entry threshold)\n",
+          )
+          .nullable()
+          .describe(
+            "PhaseGate phase this step. Null when Higgs logging is disabled.",
+          ),
+        opSlope: zod
+          .number()
+          .nullable()
+          .describe(
+            "Estimated OP slope per Higgs snapshot tick. Null when phase is null.",
+          ),
+        phaseReason: zod
+          .enum([
+            "initial",
+            "insufficient_samples",
+            "slope_rising_entered_precision",
+            "slope_plateau_exited_precision",
+            "slope_falling_exited_precision",
+            "slope_holding_precision",
+            "slope_holding_explore",
+          ])
+          .describe(
+            "Why the PhaseGate is in its current phase this step. Drives telemetry\nand is the hook the upcoming Splicer\/FragmentGraph subsystems will\nconsume.\n",
+          )
+          .nullable()
+          .describe(
+            "Reason the gate is in `phase` this step. Null when phase is null.",
+          ),
       }),
     ),
     donNarration: zod.string().nullable(),
@@ -1293,6 +1325,16 @@ export const RunEphemeroiBiomimeticResponse = zod
       )
       .nullable()
       .describe("Outcome bucket, or null when Higgs was disabled."),
+    finalPhase: zod
+      .enum(["EXPLORE", "PRECISION"])
+      .describe(
+        "PhaseGate verdict at a given step, derived from the OP-slope window.\n  \* `EXPLORE`   — symmetry intact, locked rigid (cage), or slope plateau\/falling\n  \* `PRECISION` — symmetry actively breaking (rising OP slope above entry threshold)\n",
+      )
+      .nullable()
+      .describe("PhaseGate phase at run end. Null when Higgs is disabled."),
+    phaseTransitions: zod
+      .number()
+      .describe("Total EXPLORE↔PRECISION transitions across the run."),
   })
   .describe("Outcome of one biomimetic protocol run.");
 

@@ -236,10 +236,17 @@ export class HiggsLogger {
     this.sampleSize = Math.max(1, opts.sampleSize ?? 30);
   }
 
-  /** Call from the solve loop with the current assignment + unsat count. */
-  step(assignment: Uint8Array, currentUnsat: number): void {
+  /**
+   * Call from the solve loop with the current assignment + unsat count.
+   * Returns the captured snapshot when one was taken this step (every
+   * `logInterval` steps), otherwise `null`. Returning the snapshot lets
+   * downstream consumers like the PhaseGate consume the OP value the
+   * moment it's computed, without having to reach into `capturedSnapshots`
+   * and de-dupe.
+   */
+  step(assignment: Uint8Array, currentUnsat: number): HiggsSnapshot | null {
     this.stepIdx++;
-    if (this.stepIdx % this.logInterval !== 0) return;
+    if (this.stepIdx % this.logInterval !== 0) return null;
     const snap = computeFieldSnapshot(
       this.nVars,
       this.clauses,
@@ -250,6 +257,7 @@ export class HiggsLogger {
       this.rng,
     );
     this.snapshots.push(snap);
+    return snap;
   }
 
   /** Call once when the solve loop exits. */

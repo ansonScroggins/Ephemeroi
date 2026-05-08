@@ -1,0 +1,236 @@
+import random
+from typing import Dict, List, Optional, Set, Tuple
+
+
+def _lit_satisfied(lit: int, assignment: Dict[int, bool], flipped_var: Optional[int] = None) -> bool:
+    """Return True if literal is satisfied under assignment, optionally treating flipped_var as flipped."""
+    v = abs(lit)
+    val = assignment.get(v, False)
+    if flipped_var is not None and v == flipped_var:
+        val = not val
+    return (lit > 0 and val) or (lit < 0 and not val)
+
+
+def _clause_satisfied(clause: List[int], assignment: Dict[int, bool], flipped_var: Optional[int] = None) -> bool:
+    for lit in clause:
+        if _lit_satisfied(lit, assignment, flipped_var=flipped_var):
+            return True
+    return False
+
+
+def evaluate_local_impact(
+    var: int,
+    assignment: Dict[int, bool],
+    clauses: List[List[int]],
+    clause_index: Dict[int, List[int]],
+) -> int:
+    """Count of var-local clauses that would be UNSAT after flipping var."""
+    local_clause_ids = clause_index.get(var, [])
+    if not local_clause_ids:
+        return 0
+
+    unsat_after = 0
+    for cid in local_clause_ids:
+        if not _clause_satisfied(clauses[cid], assignment, flipped_var=var):
+            unsat_after += 1
+    return unsat_after
+
+
+def evaluate_local_before(
+    var: int,
+    assignment: Dict[int, bool],
+    clauses: List[List[int]],
+    clause_index: Dict[int, List[int]],
+) -> int:
+    """Count of var-local clauses that are UNSAT before flipping var."""
+    local_clause_ids = clause_index.get(var, [])
+    if not local_clause_ids:
+        return 0
+
+    unsat_before = 0
+    for cid in local_clause_ids:
+        if not _clause_satisfied(clauses[cid], assignment, flipped_var=None):
+            unsat_before += 1
+    return unsat_before
+
+
+def build_clause_index(n_vars: int, clauses: List[List[int]]) -> Dict[int, List[int]]:
+    """Build var -> [clause_id,...] index. Raises if clauses mention vars outside 1..n_vars."""
+    idx: Dict[int, List[int]] = {v: [] for v in range(1, n_vars + 1)}
+    for cid, clause in enumerate(clauses):
+        for lit in clause:
+            v = abs(lit)
+            if v < 1 or v > n_vars:
+                raise ValueError(f"clause_index: saw var {v} but n_vars={n_vars}")
+            idx[v].append(cid)
+    return idx
+
+
+def _dedupe_preserve_order(xs: List[int]) -> List[int]:
+    seen: Set[int] = set()
+    out: List[int] = []
+    for x in xs:
+        if x not in seen:
+            seen.add(x)
+            out.append(x)
+    return out
+
+
+def compute_backpressure(
+    var: int,
+    assignment: Dict[int, bool],
+    clauses: List[List[int]],
+    clause_index: Dict[int, List[int]],
+) -> float:
+    local_ids = clause_index.get(var, [])
+    if not local_ids:
+        return 0.0
+    unsat = evaluate_local_before(var, assignment, clauses, clause_index)
+    return unsat / len(local_ids)
+
+
+BACKPRESSURE_DAM_THRESHOLD = 0.5
+
+
+def greedy_repair_step(
+    assignment: Dict[int, bool],
+    clauses: List[List[int]],
+    clause_index: Dict[int, List[int]],
+    locked_vars: Dict[int, bool],
+    candidate_pool: List[int],
+    backpressure_map: Optional[Dict[int, float]] = None,
+    rng: Optional[random.Random] = None,
+    dam_report: Optional[List[int]] = None,
+) -> Optional[int]:
+    if rng is None:
+        rng = random.Random()
+
+    # 1) scan locked vars for dams
+    if dam_report is not None:
+        for var in locked_vars.keys():
+            bp = (
+                backpressure_map.get(var, 0.0)
+                if backpressure_map is not None
+                else compute_backpressure(var, assignment, clauses, clause_index)
+            )
+            if bp > BACKPRESSURE_DAM_THRESHOLD:
+                dam_report.append(var)
+
+    # 2) filter + dedupe free candidates
+    available = [v for v in _dedupe_preserve_order(candidate_pool) if v not in locked_vars]
+    if not available:
+        return None
+
+    # 3) score by conductance gain
+    best_var: Optional[int] = None
+    best_gain: int = -10**18
+
+    for var in available:
+        before = evaluate_local_before(var, assignment, clauses, clause_index)
+        after = evaluate_local_impact(var, assignment, clauses, clause_index)
+        gain = before - after
+
+        if gain > best_gain:
+            best_gain = gain
+            best_var = var
+        elif gain == best_gain and rng.random() > 0.5:
+            best_var = var
+
+    # 4) guard against non-improving flips
+    if best_gain <= 0:
+        return None
+    return best_var
+
+
+class Splicer:
+    DAM_CONFIRM_THRESHOLD = 3
+    STAGNATION_LIMIT = 5
+
+    def __init__(self, n_vars: int, clauses: List[List[int]]):
+        self.n_vars = n_vars
+        self.clauses = clauses
+        self.clause_index = build_clause_index(n_vars, clauses)
+
+        self.dam_counts: Dict[int, int] = {}
+        self.confirmed_dams: Set[int] = set()
+
+        self.conductor_log: Dict[int, int] = {}
+
+        self.stagnation_streak = 0
+        self.total_repairs = 0
+        self.null_returns = 0
+
+    def step(
+        self,
+        assignment: Dict[int, bool],
+        locked_vars: Dict[int, bool],
+        candidate_pool: List[int],
+        backpressure_map: Optional[Dict[int, float]] = None,
+        rng: Optional[random.Random] = None,
+    ) -> Tuple[Optional[int], List[int]]:
+        self.total_repairs += 1
+        dam_report: List[int] = []
+
+        best_var = greedy_repair_step(
+            assignment=assignment,
+            clauses=self.clauses,
+            clause_index=self.clause_index,
+            locked_vars=locked_vars,
+            candidate_pool=candidate_pool,
+            backpressure_map=backpressure_map,
+            rng=rng,
+            dam_report=dam_report,
+        )
+
+        flagged_this_step = set(dam_report)
+        for var in list(self.dam_counts.keys()):
+            if var not in flagged_this_step:
+                self.dam_counts[var] = max(0, self.dam_counts[var] - 1)
+        for var in flagged_this_step:
+            self.dam_counts[var] = self.dam_counts.get(var, 0) + 1
+
+        newly_confirmed: List[int] = []
+        for var, count in self.dam_counts.items():
+            if count >= self.DAM_CONFIRM_THRESHOLD and var not in self.confirmed_dams:
+                self.confirmed_dams.add(var)
+                newly_confirmed.append(var)
+
+        if best_var is None:
+            self.stagnation_streak += 1
+            self.null_returns += 1
+        else:
+            self.stagnation_streak = 0
+            self.conductor_log[best_var] = self.conductor_log.get(best_var, 0) + 1
+
+        return best_var, newly_confirmed
+
+    @property
+    def is_stagnant(self) -> bool:
+        return self.stagnation_streak >= self.STAGNATION_LIMIT
+
+    def top_conductors(self, n: int = 5) -> List[Tuple[int, int]]:
+        return sorted(self.conductor_log.items(), key=lambda x: x[1], reverse=True)[:n]
+
+    def log(self) -> str:
+        return (
+            f"[SPLICER repairs={self.total_repairs} "
+            f"nulls={self.null_returns} "
+            f"dams={len(self.confirmed_dams)} "
+            f"stagnation_streak={self.stagnation_streak}]"
+        )
+
+
+if __name__ == "__main__":
+    # tiny smoke test (doesn’t change your API, just lets me run the file)
+    clauses = [[1, -2, 3], [-1, 2], [-3]]
+    splicer = Splicer(n_vars=3, clauses=clauses)
+
+    rng = random.Random(0)
+    assignment = {1: rng.choice([True, False]), 2: rng.choice([True, False]), 3: rng.choice([True, False])}
+    locked_vars = {2: assignment[2]}
+    candidate_pool = [1, 1, 2, 3]
+
+    best, dams = splicer.step(assignment, locked_vars, candidate_pool, rng=rng)
+    print("assignment=", assignment)
+    print("best=", best, "confirmed_dams=", dams)
+    print(splicer.log())
