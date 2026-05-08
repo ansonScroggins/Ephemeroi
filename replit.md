@@ -6,6 +6,9 @@ This project is a pnpm workspace monorepo using TypeScript, designed for buildin
 
 The AI speaks in a single first-person voice across every step. All system prompts (research/code/web) instruct it to be conversational, use "I", and avoid academic register. Steps still emit structured JSON, but every text field reads like a text message.
 
+## GitHub commit authorship
+All pushes to the public `github.com/ansonScroggins/Ephemeroi` mirror must be authored as `ansonScroggins <anson@anson.dev>`. This replaces the prior `anson.demire20@gmail.com` address — the gmail address is private and should not appear on any new public commit. Existing public commits with the old address remain (no force-push, ever); only commits going forward use the new identity. Apply this to both the `author` and `committer` fields in every Git Data API call.
+
 # System Architecture
 
 ## Core Technologies
