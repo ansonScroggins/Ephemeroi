@@ -244,6 +244,7 @@ export async function runBiomimetic(
   let unsat = computeUnsat(clauses, assignment);
   let firstCageEvent: StepEvent | null = null;
 
+  try {
   for (let step = 1; step <= maxSteps; step++) {
     if (unsat === 0) break;
 
@@ -416,16 +417,21 @@ export async function runBiomimetic(
     }
   }
 
+  } finally {
+    // Force-resolve any hypotheses still pending — they get the run's
+    // final unsat as their measurement so nothing dangles in 'pending'.
+    // In a `finally` so even if the solver loop throws (or is otherwise
+    // interrupted), the singleton ledger never accumulates orphaned
+    // pending entries from this run. finalizeRun() is idempotent.
+    hypothesisLedger.finalizeRun({
+      runId,
+      finalStep: timeline.length > 0 ? timeline[timeline.length - 1]!.step : 0,
+      finalUnsat: unsat,
+    });
+  }
+
   const finalUnsat = unsat;
   const solved = finalUnsat === 0;
-
-  // Force-resolve any hypotheses still pending — they get the run's
-  // final unsat as their measurement so nothing dangles in 'pending'.
-  hypothesisLedger.finalizeRun({
-    runId,
-    finalStep: timeline.length > 0 ? timeline[timeline.length - 1]!.step : 0,
-    finalUnsat,
-  });
 
   // Persist the Higgs trajectory before any narration / Telegram side
   // effects so the row is in the DB even if those fail. Errors are
