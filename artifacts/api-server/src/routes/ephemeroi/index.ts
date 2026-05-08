@@ -40,6 +40,7 @@ import {
 import { runSelfImprovement, SelfImproveInFlightError } from "./selfImprove";
 import { runStreamIngest } from "./stream-ingest";
 import { runBiomimetic } from "./biomimetic";
+import { hypothesisLedger } from "./hypothesis-ledger";
 import { analyzeHiggsRuns, type HiggsOutcome } from "./higgs";
 import {
   listHiggsRunSummaries,
@@ -755,6 +756,21 @@ router.get("/ephemeroi/spectral/invocations", async (req, res) => {
   } catch (err) {
     logger.error({ err }, "GET /ephemeroi/spectral/invocations failed");
     res.status(500).json({ error: "Failed to list invocations" });
+  }
+});
+
+// ===== Hypothesis Ledger =====
+// Live diagnostic surface over the v0.14.0 Constellation doc's mechanism-
+// confidence tracking. Read-only: every entry is populated by the
+// biomimetic solver as escape mechanisms (AdversarialRestart, Cyrus
+// Edict) fire and their predictions resolve.
+
+router.get("/ephemeroi/hypothesis-ledger", (_req, res) => {
+  try {
+    res.json(hypothesisLedger.snapshot());
+  } catch (err) {
+    logger.error({ err }, "GET /ephemeroi/hypothesis-ledger failed");
+    res.status(500).json({ error: "Failed to read hypothesis ledger" });
   }
 });
 

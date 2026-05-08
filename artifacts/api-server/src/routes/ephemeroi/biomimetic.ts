@@ -10,6 +10,7 @@ import {
 } from "./higgs";
 import { insertHiggsRun } from "./higgsStore";
 import { PhaseGate, type Phase, type PhaseReason } from "./phase-gate";
+import { hypothesisLedger } from "./hypothesis-ledger";
 import {
   AdversarialRestartGuard,
   type AdversarialRestartEvent,
@@ -192,6 +193,9 @@ export async function runBiomimetic(
   const seed = opts.seed ?? 0xc0ffee;
   const T = opts.temperature ?? 0.6;
   const edictCap = opts.edictCap ?? 7;
+  // Per-run identifier so the HypothesisLedger can scope its tick() to
+  // hypotheses registered by THIS run. Cheap, monotonic, no UUID dep.
+  const runId = `bio-${seed.toString(16)}-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
   const rng = mulberry32(seed);
   const clauses = generate3SatProblem(n, m, rng);
@@ -285,6 +289,15 @@ export async function runBiomimetic(
       if (edictTriggered) {
         edictCount += 1;
         recentEdicts.push(step);
+        // Register the edict as a testable hypothesis: its surgical
+        // unit-prop-style cascade should drop unsat measurably within a
+        // short window, or it failed to break the cage it targeted.
+        hypothesisLedger.register({
+          mechanism: "CyrusEdict",
+          runId,
+          step,
+          unsatBefore: unsat,
+        });
       }
       unsat = computeUnsat(clauses, assignment);
     }
@@ -325,6 +338,7 @@ export async function runBiomimetic(
     // PhaseGate so its slope window doesn't straddle the discontinuity.
     let restartEvent: AdversarialRestartEvent | null = null;
     if (restartGuard?.shouldRestart(snap, step)) {
+      const unsatBeforeRestart = unsat;
       restartEvent = restartGuard.applyRestart(
         snap!,
         step,
@@ -334,6 +348,16 @@ export async function runBiomimetic(
       );
       unsat = computeUnsat(clauses, assignment);
       phaseGate?.reset();
+      // Register the restart as a hypothesis with a 30-step prediction
+      // window. We use the pre-restart unsat as the baseline so a restart
+      // that immediately makes things worse but recovers within the
+      // window still gets credit.
+      hypothesisLedger.register({
+        mechanism: "AdversarialRestart",
+        runId,
+        step,
+        unsatBefore: unsatBeforeRestart,
+      });
       logger.info(
         {
           step,
@@ -365,6 +389,10 @@ export async function runBiomimetic(
     timeline.push(evt);
     if (cage && firstCageEvent === null) firstCageEvent = evt;
 
+    // Resolve any pending hypotheses for this run whose window has
+    // closed or whose unsat-reduction target has already been met.
+    hypothesisLedger.tick({ runId, step, unsat });
+
     // Fire bus events on significant moments only — per-step would flood
     // any subscriber (and the SSE stream). PhaseGate transitions also
     // qualify as "significant" so subscribers can watch the EXPLORE↔
@@ -390,6 +418,14 @@ export async function runBiomimetic(
 
   const finalUnsat = unsat;
   const solved = finalUnsat === 0;
+
+  // Force-resolve any hypotheses still pending — they get the run's
+  // final unsat as their measurement so nothing dangles in 'pending'.
+  hypothesisLedger.finalizeRun({
+    runId,
+    finalStep: timeline.length > 0 ? timeline[timeline.length - 1]!.step : 0,
+    finalUnsat,
+  });
 
   // Persist the Higgs trajectory before any narration / Telegram side
   // effects so the row is in the DB even if those fail. Errors are
